@@ -57,7 +57,7 @@ jobs:
 
   # ==================== macOS Intel (x86_64) ====================
   build-macos-intel:
-    runs-on: macos-13
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
 
@@ -201,11 +201,13 @@ jobs:
           platforms: arm64
 
       - name: Build in ARM64 container
-        uses: uraimo/run-on-arch-action@v2
+        uses: uraimo/run-on-arch-action@v3
         with:
           arch: aarch64
           distro: ubuntu22.04
           githubToken: ${{ github.token }}
+          dockerRunArgs: |
+            --volume "${PWD}:/workspace"
           install: |
             apt-get update
             apt-get install -y cmake g++ make wget
@@ -213,15 +215,16 @@ jobs:
             apt-get install -y libopencv-dev
             apt-get install -y libxcb-cursor0 libfuse2 file
           run: |
+            cd /workspace
             cmake -B build -DCMAKE_BUILD_TYPE=Release
-            cmake --build build --config Release
+            cmake --build build --config Release -j$(nproc)
 
             mkdir -p package
             cp build/YoloAnnotator package/
 
             # 复制依赖库
             mkdir -p package/lib
-            ldd build/YoloAnnotator | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' package/lib/ || true
+            ldd build/YoloAnnotator | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' package/lib/ 2>/dev/null || true
 
             # 创建启动脚本
             cat > package/YoloAnnotator.sh << 'SCRIPT'
@@ -232,7 +235,7 @@ jobs:
             SCRIPT
             chmod +x package/YoloAnnotator.sh
 
-            tar -czvf YoloAnnotator-Linux-ARM64.tar.gz -C package .
+            tar -czvf /workspace/YoloAnnotator-Linux-ARM64.tar.gz -C package .
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
