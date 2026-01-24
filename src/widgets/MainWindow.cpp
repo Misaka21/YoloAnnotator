@@ -131,6 +131,15 @@ void MainWindow::setupMenus() {
         m_autoAnnotateAction->setEnabled(true);
         m_batchAnnotateAction->setEnabled(true);
         unannotatedAction->setEnabled(true);
+        // 检查模型类别数是否超过classes.txt
+        if (m_classesLoader.classCount() > 0 && m_detector->numClasses() > m_classesLoader.classCount()) {
+            QMessageBox::warning(this, "类别数量不匹配",
+                QString("模型有 %1 个类别，但 classes.txt 只定义了 %2 个类别。\n\n"
+                        "超出的类别将显示为 class_X 格式。\n"
+                        "建议更新 classes.txt 文件。")
+                .arg(m_detector->numClasses())
+                .arg(m_classesLoader.classCount()));
+        }
     });
     connect(m_detector, &YoloDetector::modelUnloaded, [this, unannotatedAction]() {
         m_autoAnnotateAction->setEnabled(false);
