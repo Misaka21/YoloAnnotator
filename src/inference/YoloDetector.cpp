@@ -158,20 +158,15 @@ bool YoloDetector::analyzeModel()
 cv::Mat YoloDetector::qImageToMat(const QImage& image)
 {
     QImage img = image;
-    if (img.format() != QImage::Format_RGB888 && img.format() != QImage::Format_RGB32) {
+
+    // 统一转换为RGB888格式，避免格式差异
+    if (img.format() != QImage::Format_RGB888) {
         img = img.convertToFormat(QImage::Format_RGB888);
     }
 
-    cv::Mat mat;
-    if (img.format() == QImage::Format_RGB888) {
-        mat = cv::Mat(img.height(), img.width(), CV_8UC3,
-                      const_cast<uchar*>(img.bits()), img.bytesPerLine()).clone();
-        cv::cvtColor(mat, mat, cv::COLOR_RGB2BGR);
-    } else {
-        mat = cv::Mat(img.height(), img.width(), CV_8UC4,
-                      const_cast<uchar*>(img.bits()), img.bytesPerLine()).clone();
-        cv::cvtColor(mat, mat, cv::COLOR_RGBA2BGR);
-    }
+    cv::Mat mat = cv::Mat(img.height(), img.width(), CV_8UC3,
+                          const_cast<uchar*>(img.bits()), img.bytesPerLine()).clone();
+    cv::cvtColor(mat, mat, cv::COLOR_RGB2BGR);
     return mat;
 }
 
