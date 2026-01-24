@@ -89,6 +89,8 @@ protected:
     void contextMenuEvent(QContextMenuEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
+    void leaveEvent(QEvent* event) override;
+    void enterEvent(QEnterEvent* event) override;
 
 private:
     QGraphicsScene* m_scene;
@@ -122,9 +124,14 @@ private:
     int m_dragPointIndex = -1;  // -1=整体拖动, 0-3=边框角点, >=4=关键点
     QPointF m_dragStartPos;
 
+    // 十字辅助线
+    QGraphicsLineItem* m_crossHairH = nullptr;
+    QGraphicsLineItem* m_crossHairV = nullptr;
+
     void updateScene();
     void updateAnnotationItems();
     void updateTransform();
+    void updateCrossHair(const QPointF& scenePos);
     void finishDrawBBox(const QPointF& end);
     int findAnnotationAt(const QPointF& scenePos);
     int findPointAt(int annIndex, const QPointF& scenePos);

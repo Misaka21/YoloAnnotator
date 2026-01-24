@@ -82,7 +82,7 @@ private:
     int m_currentIndex = -1;
     ClassesLoader m_classesLoader;
     AnnotationIO m_annotationIO;
-    bool m_autoSave = true;
+    bool m_autoSave = false;
     bool m_modified = false;
     bool m_classesLocked = false;  // 类别是否已锁定
     

@@ -118,26 +118,26 @@ void MainWindow::setupMenus() {
 
 void MainWindow::setupToolBar() {
     QToolBar* toolbar = addToolBar("工具栏"); toolbar->setMovable(false);
-    QAction* prevAction = toolbar->addAction("上一张");
+    QAction* prevAction = toolbar->addAction("上一张 (A)");
     prevAction->setShortcut(QKeySequence("A"));
     connect(prevAction, &QAction::triggered, this, &MainWindow::onPrevImage);
-    QAction* nextAction = toolbar->addAction("下一张");
+    QAction* nextAction = toolbar->addAction("下一张 (D)");
     nextAction->setShortcut(QKeySequence("D"));
     connect(nextAction, &QAction::triggered, this, &MainWindow::onNextImage);
     toolbar->addSeparator();
     QActionGroup* modeGroup = new QActionGroup(this);
-    m_selectAction = toolbar->addAction("选择");
+    m_selectAction = toolbar->addAction("选择 (V)");
     m_selectAction->setCheckable(true); m_selectAction->setChecked(true);
     m_selectAction->setShortcut(QKeySequence("V")); modeGroup->addAction(m_selectAction);
-    m_bboxAction = toolbar->addAction("边界框");
+    m_bboxAction = toolbar->addAction("边界框 (B)");
     m_bboxAction->setCheckable(true);
     m_bboxAction->setShortcut(QKeySequence("B")); modeGroup->addAction(m_bboxAction);
-    m_keypointAction = toolbar->addAction("关键点");
+    m_keypointAction = toolbar->addAction("关键点 (K)");
     m_keypointAction->setCheckable(true);
     m_keypointAction->setShortcut(QKeySequence("K")); modeGroup->addAction(m_keypointAction);
     connect(modeGroup, &QActionGroup::triggered, this, &MainWindow::onModeChanged);
     toolbar->addSeparator();
-    QAction* saveAction = toolbar->addAction("保存");
+    QAction* saveAction = toolbar->addAction("保存 (Ctrl+S)");
     saveAction->setShortcut(QKeySequence("Ctrl+S"));
     connect(saveAction, &QAction::triggered, this, &MainWindow::onSaveAnnotation);
     QAction* clearAction = toolbar->addAction("清空");

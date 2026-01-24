@@ -21,6 +21,15 @@ CanvasView::CanvasView(QWidget* parent)
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setBackgroundBrush(QBrush(QColor(50, 50, 50)));
     setMouseTracking(true);
+
+    // 创建十字辅助线
+    QPen crossPen(QColor(0, 255, 0, 180), 1, Qt::DashLine);
+    m_crossHairH = m_scene->addLine(0, 0, 0, 0, crossPen);
+    m_crossHairV = m_scene->addLine(0, 0, 0, 0, crossPen);
+    m_crossHairH->setZValue(1000);
+    m_crossHairV->setZValue(1000);
+    m_crossHairH->setVisible(false);
+    m_crossHairV->setVisible(false);
 }
 
 CanvasView::~CanvasView() = default;
@@ -34,6 +43,15 @@ void CanvasView::setImage(const QImage& image) {
     m_scene->clear();
     m_pixmapItem = nullptr;
     m_annotationItems.clear();
+
+    // 重新创建十字辅助线
+    QPen crossPen(QColor(0, 255, 0, 180), 1, Qt::DashLine);
+    m_crossHairH = m_scene->addLine(0, 0, 0, 0, crossPen);
+    m_crossHairV = m_scene->addLine(0, 0, 0, 0, crossPen);
+    m_crossHairH->setZValue(1000);
+    m_crossHairV->setZValue(1000);
+    m_crossHairH->setVisible(m_mode == EditMode::DrawBBox);
+    m_crossHairV->setVisible(m_mode == EditMode::DrawBBox);
 
     // 添加图片
     m_pixmapItem = m_scene->addPixmap(QPixmap::fromImage(image));
@@ -103,6 +121,10 @@ void CanvasView::setEditMode(EditMode mode) {
     } else {
         setCursor(Qt::ArrowCursor);
     }
+    // 只在边界框模式下显示十字线
+    bool showCross = (mode == EditMode::DrawBBox);
+    m_crossHairH->setVisible(showCross);
+    m_crossHairV->setVisible(showCross);
 }
 
 void CanvasView::setSelectedAnnotation(int index) {
@@ -240,6 +262,11 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
 void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     QPointF scenePos = mapToScene(event->pos());
     emit mouseMoved(scenePos);
+
+    // 更新十字辅助线
+    if (m_mode == EditMode::DrawBBox) {
+        updateCrossHair(scenePos);
+    }
 
     if (m_drawing && m_tempRect) {
         // 更新临时矩形
@@ -589,4 +616,32 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
 void CanvasView::applyZoom(double factor, const QPointF& center) {
     scale(factor, factor);
     emit zoomChanged(transform().m11());
+}
+
+void CanvasView::updateCrossHair(const QPointF& scenePos) {
+    if (m_image.isNull()) return;
+
+    double imgW = m_image.width();
+    double imgH = m_image.height();
+
+    // 水平线：从左边缘到右边缘
+    m_crossHairH->setLine(0, scenePos.y(), imgW, scenePos.y());
+    // 垂直线：从上边缘到下边缘
+    m_crossHairV->setLine(scenePos.x(), 0, scenePos.x(), imgH);
+}
+
+void CanvasView::leaveEvent(QEvent* event) {
+    // 鼠标离开时隐藏十字线
+    m_crossHairH->setVisible(false);
+    m_crossHairV->setVisible(false);
+    QGraphicsView::leaveEvent(event);
+}
+
+void CanvasView::enterEvent(QEnterEvent* event) {
+    // 鼠标进入时，如果是边界框模式则显示十字线
+    if (m_mode == EditMode::DrawBBox) {
+        m_crossHairH->setVisible(true);
+        m_crossHairV->setVisible(true);
+    }
+    QGraphicsView::enterEvent(event);
 }
