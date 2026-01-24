@@ -67,10 +67,21 @@ void ModelSettingsDialog::setupUI()
     m_iouSpinBox->setDecimals(2);
 
     m_backendCombo = new QComboBox();
-    m_backendCombo->addItem("CPU", static_cast<int>(InferenceBackend::CPU));
-    m_backendCombo->addItem("OpenCL (GPU)", static_cast<int>(InferenceBackend::OpenCL));
-    m_backendCombo->addItem("OpenCL FP16 (快速，精度略低)", static_cast<int>(InferenceBackend::OpenCL_FP16));
-    m_backendCombo->setCurrentIndex(static_cast<int>(m_detector->backend()));
+
+    // 只显示运行时可用的后端
+    QVector<InferenceBackend> backends = YoloDetector::availableBackends();
+    for (InferenceBackend backend : backends) {
+        m_backendCombo->addItem(YoloDetector::backendName(backend), static_cast<int>(backend));
+    }
+
+    // 设置当前后端
+    int currentBackend = static_cast<int>(m_detector->backend());
+    for (int i = 0; i < m_backendCombo->count(); i++) {
+        if (m_backendCombo->itemData(i).toInt() == currentBackend) {
+            m_backendCombo->setCurrentIndex(i);
+            break;
+        }
+    }
 
     settingsLayout->addRow("置信度阈值:", m_confSpinBox);
     settingsLayout->addRow("IoU 阈值:", m_iouSpinBox);
@@ -132,7 +143,11 @@ void ModelSettingsDialog::onApplySettings()
 
     m_detector->setConfThreshold(m_confSpinBox->value());
     m_detector->setIouThreshold(m_iouSpinBox->value());
-    m_detector->setBackend(static_cast<InferenceBackend>(m_backendCombo->currentIndex()));
+
+    // 使用 itemData 获取正确的后端枚举值
+    int backendValue = m_backendCombo->currentData().toInt();
+    m_detector->setBackend(static_cast<InferenceBackend>(backendValue));
+
     QMessageBox::information(this, "提示", "参数已应用");
 }
 

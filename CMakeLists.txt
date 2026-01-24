@@ -34,6 +34,32 @@ endif()
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio dnn)
 message(STATUS "OpenCV found: ${OpenCV_VERSION}")
 
+# 检测OpenCV编译时的后端支持
+# 检查CUDA支持
+if(OpenCV_CUDA_VERSION OR DEFINED OpenCV_CUDA)
+    message(STATUS "OpenCV CUDA support: YES")
+    set(HAVE_CUDA ON)
+else()
+    message(STATUS "OpenCV CUDA support: NO")
+    set(HAVE_CUDA OFF)
+endif()
+
+# 检查OpenVINO支持 (通过检查InferenceEngine)
+if(TARGET opencv_dnn AND (WITH_OPENVINO OR WITH_INF_ENGINE))
+    message(STATUS "OpenCV OpenVINO support: YES")
+    set(HAVE_OPENVINO ON)
+else()
+    # 尝试通过OpenCV配置检测
+    get_target_property(_dnn_defs opencv_dnn INTERFACE_COMPILE_DEFINITIONS)
+    if(_dnn_defs MATCHES "HAVE_INF_ENGINE" OR _dnn_defs MATCHES "HAVE_NGRAPH")
+        message(STATUS "OpenCV OpenVINO support: YES (detected)")
+        set(HAVE_OPENVINO ON)
+    else()
+        message(STATUS "OpenCV OpenVINO support: NO")
+        set(HAVE_OPENVINO OFF)
+    endif()
+endif()
+
 # 源文件
 set(CORE_SOURCES
     src/core/Annotation.cpp
@@ -81,6 +107,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Widgets
     ${OpenCV_LIBS}
 )
+
+# 添加后端支持的编译宏
+if(HAVE_CUDA)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_CUDA)
+endif()
+if(HAVE_OPENVINO)
+    target_compile_definitions(${PROJECT_NAME} PRIVATE HAVE_OPENVINO)
+endif()
 
 # Windows特殊处理
 if(WIN32)

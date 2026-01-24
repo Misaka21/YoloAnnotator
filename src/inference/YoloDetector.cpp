@@ -1,9 +1,61 @@
 #include "YoloDetector.h"
 #include <opencv2/imgproc.hpp>
+#include <opencv2/core/ocl.hpp>
+#ifdef HAVE_CUDA
+#include <opencv2/core/cuda.hpp>
+#endif
 #include <QDebug>
 #include <QFileInfo>
 #include <algorithm>
 #include <cmath>
+
+QVector<InferenceBackend> YoloDetector::availableBackends()
+{
+    QVector<InferenceBackend> backends;
+    backends.append(InferenceBackend::CPU);  // CPU 始终可用
+
+    // 检测 OpenCL
+    if (cv::ocl::haveOpenCL()) {
+        backends.append(InferenceBackend::OpenCL);
+        backends.append(InferenceBackend::OpenCL_FP16);
+    }
+
+#ifdef HAVE_OPENVINO
+    // OpenVINO 编译时已启用，运行时检测设备
+    backends.append(InferenceBackend::OpenVINO_CPU);
+    // Intel GPU 检测较复杂，暂时总是添加让用户尝试
+    backends.append(InferenceBackend::OpenVINO_GPU);
+#endif
+
+#ifdef HAVE_CUDA
+    // CUDA 运行时检测
+    try {
+        int cudaDevices = cv::cuda::getCudaEnabledDeviceCount();
+        if (cudaDevices > 0) {
+            backends.append(InferenceBackend::CUDA);
+            backends.append(InferenceBackend::CUDA_FP16);
+        }
+    } catch (...) {
+        // CUDA 不可用
+    }
+#endif
+
+    return backends;
+}
+
+QString YoloDetector::backendName(InferenceBackend backend)
+{
+    switch (backend) {
+    case InferenceBackend::CPU:          return "CPU";
+    case InferenceBackend::OpenCL:       return "OpenCL (GPU通用)";
+    case InferenceBackend::OpenCL_FP16:  return "OpenCL FP16";
+    case InferenceBackend::OpenVINO_CPU: return "OpenVINO CPU (Intel优化)";
+    case InferenceBackend::OpenVINO_GPU: return "OpenVINO GPU (Intel集显)";
+    case InferenceBackend::CUDA:         return "CUDA (NVIDIA GPU)";
+    case InferenceBackend::CUDA_FP16:    return "CUDA FP16";
+    default:                             return "Unknown";
+    }
+}
 
 YoloDetector::YoloDetector(QObject* parent)
     : QObject(parent)
@@ -85,6 +137,26 @@ void YoloDetector::setBackend(InferenceBackend backend)
         m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
         m_net.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL_FP16);
         break;
+#ifdef HAVE_OPENVINO
+    case InferenceBackend::OpenVINO_CPU:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_INFERENCE_ENGINE);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+        break;
+    case InferenceBackend::OpenVINO_GPU:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_INFERENCE_ENGINE);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);  // Intel GPU
+        break;
+#endif
+#ifdef HAVE_CUDA
+    case InferenceBackend::CUDA:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA);
+        break;
+    case InferenceBackend::CUDA_FP16:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_CUDA);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CUDA_FP16);
+        break;
+#endif
     case InferenceBackend::CPU:
     default:
         m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);

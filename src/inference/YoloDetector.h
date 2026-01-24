@@ -18,9 +18,13 @@ enum class ModelType {
  * @brief 推理后端
  */
 enum class InferenceBackend {
-    CPU,
-    OpenCL,
-    OpenCL_FP16
+    CPU,            // 默认CPU
+    OpenCL,         // OpenCL GPU (通用)
+    OpenCL_FP16,    // OpenCL GPU FP16
+    OpenVINO_CPU,   // Intel CPU优化
+    OpenVINO_GPU,   // Intel 集显/独显
+    CUDA,           // NVIDIA GPU
+    CUDA_FP16       // NVIDIA GPU FP16
 };
 
 /**
@@ -63,6 +67,10 @@ public:
     // 推理后端
     void setBackend(InferenceBackend backend);
     InferenceBackend backend() const { return m_backend; }
+
+    // 检测可用后端
+    static QVector<InferenceBackend> availableBackends();
+    static QString backendName(InferenceBackend backend);
 
     // 推理
     QVector<Annotation> detect(const QImage& image);
