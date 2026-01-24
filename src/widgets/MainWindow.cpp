@@ -10,8 +10,13 @@
 #include <QShortcut>
 #include <QInputDialog>
 #include <QActionGroup>
+#include <QProgressDialog>
+#include <QApplication>
+#include "inference/YoloDetector.h"
+#include "inference/ModelSettingsDialog.h"
 
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
+    m_detector = new YoloDetector(this);
     setupUI(); setupMenus(); setupToolBar(); setupConnections();
     setWindowTitle("YOLO 标注工具"); resize(1400, 900);
 }
@@ -83,6 +88,32 @@ void MainWindow::setupMenus() {
     QMenu* toolsMenu = menuBar()->addMenu("工具(&T)");
     QAction* skeletonAction = toolsMenu->addAction("配置骨架(&S)...");
     connect(skeletonAction, &QAction::triggered, this, &MainWindow::onEditSkeletonConfig);
+
+    // 自动标注菜单
+    QMenu* autoMenu = menuBar()->addMenu("自动标注(&A)");
+    QAction* modelSettingsAction = autoMenu->addAction("模型设置(&S)...");
+    connect(modelSettingsAction, &QAction::triggered, this, &MainWindow::onModelSettings);
+    autoMenu->addSeparator();
+    m_autoAnnotateAction = autoMenu->addAction("标注当前图片(&C)");
+    m_autoAnnotateAction->setShortcut(QKeySequence("Ctrl+G"));
+    m_autoAnnotateAction->setEnabled(false);
+    connect(m_autoAnnotateAction, &QAction::triggered, this, &MainWindow::onAutoAnnotateCurrent);
+    m_batchAnnotateAction = autoMenu->addAction("批量标注所有(&B)...");
+    m_batchAnnotateAction->setEnabled(false);
+    connect(m_batchAnnotateAction, &QAction::triggered, this, &MainWindow::onAutoAnnotateBatch);
+    QAction* unannotatedAction = autoMenu->addAction("标注未标注图片(&U)...");
+    unannotatedAction->setEnabled(false);
+    connect(unannotatedAction, &QAction::triggered, this, &MainWindow::onAutoAnnotateUnannotated);
+    connect(m_detector, &YoloDetector::modelLoaded, [this, unannotatedAction](const QString&) {
+        m_autoAnnotateAction->setEnabled(true);
+        m_batchAnnotateAction->setEnabled(true);
+        unannotatedAction->setEnabled(true);
+    });
+    connect(m_detector, &YoloDetector::modelUnloaded, [this, unannotatedAction]() {
+        m_autoAnnotateAction->setEnabled(false);
+        m_batchAnnotateAction->setEnabled(false);
+        unannotatedAction->setEnabled(false);
+    });
 }
 
 void MainWindow::setupToolBar() {
@@ -372,19 +403,19 @@ QString MainWindow::getAnnotationPath(const QString& imagePath) {
 
 void MainWindow::onContextMenuRequested(int annotationIndex, const QPoint& globalPos) {
     if (annotationIndex < 0 || annotationIndex >= m_canvasView->annotations().size()) return;
-    
+
     QMenu menu(this);
-    
+
     // 更改类别子菜单
     QMenu* classMenu = menu.addMenu("更改类别");
     for (int i = 0; i < m_classesLoader.classCount(); ++i) {
         QAction* action = classMenu->addAction(QString("[%1] %2").arg(i).arg(m_classesLoader.className(i)));
         action->setData(i);
     }
-    
+
     menu.addSeparator();
     QAction* deleteAction = menu.addAction("删除");
-    
+
     QAction* selected = menu.exec(globalPos);
     if (selected == deleteAction) {
         m_canvasView->removeAnnotation(annotationIndex);
@@ -396,4 +427,156 @@ void MainWindow::onContextMenuRequested(int annotationIndex, const QPoint& globa
         m_canvasView->setCurrentClass(classId);
         m_classList->setCurrentRow(classId);
     }
+}
+
+void MainWindow::onModelSettings() {
+    ModelSettingsDialog dialog(m_detector, this);
+    dialog.exec();
+}
+
+void MainWindow::onAutoAnnotateCurrent() {
+    if (!m_detector->isLoaded()) {
+        QMessageBox::warning(this, "警告", "请先加载ONNX模型\n(自动标注 -> 模型设置)");
+        return;
+    }
+    if (m_canvasView->currentImage().isNull()) {
+        QMessageBox::warning(this, "警告", "请先打开图片");
+        return;
+    }
+
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    auto annotations = m_detector->detect(m_canvasView->currentImage());
+    QApplication::restoreOverrideCursor();
+
+    if (annotations.isEmpty()) {
+        QMessageBox::information(this, "提示", "未检测到任何目标");
+        return;
+    }
+
+    // 询问替换或追加
+    auto reply = QMessageBox::question(this, "自动标注",
+        QString("检测到 %1 个目标\n\n替换当前标注? (否=追加)").arg(annotations.size()),
+        QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+
+    if (reply == QMessageBox::Cancel) return;
+    if (reply == QMessageBox::Yes) m_canvasView->clearAnnotations();
+
+    for (const auto& ann : annotations) {
+        m_canvasView->addAnnotation(ann);
+    }
+
+    m_statusLabel->setText(QString("自动标注完成: 检测到 %1 个目标").arg(annotations.size()));
+}
+
+void MainWindow::onAutoAnnotateBatch() {
+    if (!m_detector->isLoaded()) {
+        QMessageBox::warning(this, "警告", "请先加载ONNX模型");
+        return;
+    }
+    if (m_imageFiles.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请先打开文件夹");
+        return;
+    }
+
+    auto reply = QMessageBox::question(this, "批量自动标注",
+        QString("将对 %1 张图片进行自动标注\n已有标注的图片将被覆盖\n\n是否继续?").arg(m_imageFiles.size()),
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (reply != QMessageBox::Yes) return;
+
+    // 保存当前
+    if (m_modified && m_autoSave) saveCurrentAnnotation();
+
+    QProgressDialog progress("正在自动标注...", "取消", 0, m_imageFiles.size(), this);
+    progress.setWindowModality(Qt::WindowModal);
+
+    int totalDetections = 0;
+    for (int i = 0; i < m_imageFiles.size(); ++i) {
+        if (progress.wasCanceled()) break;
+        progress.setValue(i);
+        progress.setLabelText(QString("正在处理: %1\n(%2/%3)").arg(m_imageFiles[i]).arg(i+1).arg(m_imageFiles.size()));
+        QApplication::processEvents();
+
+        QString imagePath = m_currentFolder + "/" + m_imageFiles[i];
+        QImage image(imagePath);
+        if (image.isNull()) continue;
+
+        auto annotations = m_detector->detect(image);
+        totalDetections += annotations.size();
+
+        // 保存
+        QString txtPath = getAnnotationPath(imagePath);
+        m_annotationIO.save(txtPath, annotations);
+    }
+    progress.setValue(m_imageFiles.size());
+
+    updateFileList();
+    if (m_currentIndex >= 0) loadImage(m_currentIndex);
+
+    QMessageBox::information(this, "完成",
+        QString("批量标注完成!\n共处理 %1 张图片\n检测到 %2 个目标").arg(m_imageFiles.size()).arg(totalDetections));
+}
+
+void MainWindow::onAutoAnnotateUnannotated() {
+    if (!m_detector->isLoaded()) {
+        QMessageBox::warning(this, "警告", "请先加载ONNX模型");
+        return;
+    }
+    if (m_imageFiles.isEmpty()) {
+        QMessageBox::warning(this, "警告", "请先打开文件夹");
+        return;
+    }
+
+    // 找出未标注的图片
+    QStringList unannotated;
+    for (const QString& file : m_imageFiles) {
+        QString imagePath = m_currentFolder + "/" + file;
+        QString txtPath = getAnnotationPath(imagePath);
+        if (!QFile::exists(txtPath)) {
+            unannotated.append(file);
+        }
+    }
+
+    if (unannotated.isEmpty()) {
+        QMessageBox::information(this, "提示", "所有图片都已有标注");
+        return;
+    }
+
+    auto reply = QMessageBox::question(this, "标注未标注图片",
+        QString("找到 %1 张未标注图片\n\n是否进行自动标注?").arg(unannotated.size()),
+        QMessageBox::Yes | QMessageBox::No);
+
+    if (reply != QMessageBox::Yes) return;
+
+    // 保存当前
+    if (m_modified && m_autoSave) saveCurrentAnnotation();
+
+    QProgressDialog progress("正在自动标注...", "取消", 0, unannotated.size(), this);
+    progress.setWindowModality(Qt::WindowModal);
+
+    int totalDetections = 0;
+    for (int i = 0; i < unannotated.size(); ++i) {
+        if (progress.wasCanceled()) break;
+        progress.setValue(i);
+        progress.setLabelText(QString("正在处理: %1\n(%2/%3)").arg(unannotated[i]).arg(i+1).arg(unannotated.size()));
+        QApplication::processEvents();
+
+        QString imagePath = m_currentFolder + "/" + unannotated[i];
+        QImage image(imagePath);
+        if (image.isNull()) continue;
+
+        auto annotations = m_detector->detect(image);
+        totalDetections += annotations.size();
+
+        // 保存
+        QString txtPath = getAnnotationPath(imagePath);
+        m_annotationIO.save(txtPath, annotations);
+    }
+    progress.setValue(unannotated.size());
+
+    updateFileList();
+    if (m_currentIndex >= 0) loadImage(m_currentIndex);
+
+    QMessageBox::information(this, "完成",
+        QString("标注完成!\n共处理 %1 张图片\n检测到 %2 个目标").arg(unannotated.size()).arg(totalDetections));
 }

@@ -12,7 +12,7 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
 # OpenCV (MinGW编译版本)
 set(OpenCV_DIR "C:/opencv/opencv/build-mingw/install")
-find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio dnn)
 message(STATUS "OpenCV found: ${OpenCV_VERSION}")
 
 # 源文件
@@ -35,11 +35,17 @@ set(WIDGET_SOURCES
     src/widgets/AnnotationItem.cpp
 )
 
+set(INFERENCE_SOURCES
+    src/inference/YoloDetector.cpp
+    src/inference/ModelSettingsDialog.cpp
+)
+
 set(ALL_SOURCES
     src/main.cpp
     ${CORE_SOURCES}
     ${IO_SOURCES}
     ${WIDGET_SOURCES}
+    ${INFERENCE_SOURCES}
 )
 
 # 可执行文件

@@ -11,6 +11,8 @@
 #include "io/ClassesLoader.h"
 #include "io/AnnotationIO.h"
 
+class YoloDetector;
+
 /**
  * @brief 主窗口
  */
@@ -52,6 +54,12 @@ private slots:
     void onClassListDoubleClicked(QListWidgetItem* item);
     void onContextMenuRequested(int annotationIndex, const QPoint& globalPos);
 
+    // 自动标注
+    void onModelSettings();
+    void onAutoAnnotateCurrent();
+    void onAutoAnnotateBatch();
+    void onAutoAnnotateUnannotated();
+
 private:
     // UI组件
     CanvasView* m_canvasView;
@@ -80,6 +88,11 @@ private:
     
     // 工具栏/菜单动作
     QAction* m_autoSaveAction = nullptr;
+    QAction* m_autoAnnotateAction = nullptr;
+    QAction* m_batchAnnotateAction = nullptr;
+
+    // 自动标注
+    YoloDetector* m_detector = nullptr;
 
     void setupUI();
     void setupMenus();
