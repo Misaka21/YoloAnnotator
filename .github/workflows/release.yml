@@ -9,9 +9,10 @@ on:
 env:
   QT_VERSION: '6.6.0'
   BUILD_TYPE: Release
+  OPENCV_VERSION: '4.9.0'
 
 jobs:
-  # ==================== Windows x64 ====================
+  # ==================== Windows x64 (CPU) ====================
   build-windows-x64:
     runs-on: windows-latest
     steps:
@@ -55,6 +56,455 @@ jobs:
         with:
           name: YoloAnnotator-Windows-x64
           path: YoloAnnotator-Windows-x64.zip
+
+  # ==================== Windows x64 OpenVINO ====================
+  build-windows-openvino:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtimageformats'
+          cache: true
+
+      - name: Download OpenVINO
+        run: |
+          curl -L -o openvino.zip "https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.0/windows/w_openvino_toolkit_windows_2024.0.0.14509.34caeefd078_x86_64.zip"
+          Expand-Archive openvino.zip -DestinationPath C:\
+          Rename-Item "C:\w_openvino_toolkit_windows_2024.0.0.14509.34caeefd078_x86_64" "C:\openvino"
+
+      - name: Cache OpenCV Build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: C:\opencv-install
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino-windows
+
+      - name: Build OpenCV with OpenVINO
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
+          Expand-Archive opencv.zip -DestinationPath C:\
+          cmake -B C:\opencv-build -S C:\opencv-${{ env.OPENCV_VERSION }} -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=C:\opencv-install `
+            -DBUILD_SHARED_LIBS=ON `
+            -DBUILD_opencv_world=ON `
+            -DBUILD_TESTS=OFF `
+            -DBUILD_PERF_TESTS=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DBUILD_opencv_python3=OFF `
+            -DWITH_OPENVINO=ON `
+            -DOpenVINO_DIR="C:\openvino\runtime\cmake"
+          cmake --build C:\opencv-build --config Release --parallel 4
+          cmake --install C:\opencv-build --config Release
+
+      - name: Configure CMake
+        run: |
+          $env:OpenVINO_DIR = "C:\openvino\runtime\cmake"
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install"
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Package
+        run: |
+          mkdir package
+          cp build/${{ env.BUILD_TYPE }}/YoloAnnotator.exe package/
+          cd package
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
+          # OpenCV DLLs
+          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || true
+          # OpenVINO DLLs
+          cp C:\openvino\runtime\bin\intel64\Release\*.dll . 2>$null || true
+          cp C:\openvino\runtime\3rdparty\tbb\bin\*.dll . 2>$null || true
+
+      - name: Create ZIP
+        run: Compress-Archive -Path package/* -DestinationPath YoloAnnotator-Windows-x64-OpenVINO.zip
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-Windows-x64-OpenVINO
+          path: YoloAnnotator-Windows-x64-OpenVINO.zip
+
+  # ==================== Windows x64 CUDA ====================
+  build-windows-cuda:
+    runs-on: windows-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win64_msvc2019_64'
+          modules: 'qtimageformats'
+          cache: true
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.16
+        with:
+          cuda: '11.8.0'
+          method: 'network'
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cufft", "cufft_dev", "curand", "curand_dev", "cusolver", "cusolver_dev", "cusparse", "cusparse_dev", "visual_studio_integration"]'
+
+      - name: Download cuDNN
+        run: |
+          curl -L -o cudnn.zip "${{ secrets.CUDNN_WINDOWS_URL }}"
+          Expand-Archive cudnn.zip -DestinationPath C:\cudnn
+          $cudnnDir = Get-ChildItem C:\cudnn -Directory | Select-Object -First 1
+          cp "$cudnnDir\bin\*.dll" "$env:CUDA_PATH\bin\" -Force
+          cp "$cudnnDir\include\*.h" "$env:CUDA_PATH\include\" -Force
+          cp "$cudnnDir\lib\x64\*.lib" "$env:CUDA_PATH\lib\x64\" -Force
+
+      - name: Cache OpenCV Build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: C:\opencv-install
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-windows
+
+      - name: Build OpenCV with CUDA
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          curl -L -o opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
+          Expand-Archive opencv.zip -DestinationPath C:\
+          cmake -B C:\opencv-build -S C:\opencv-${{ env.OPENCV_VERSION }} -G "Visual Studio 17 2022" -A x64 `
+            -DCMAKE_BUILD_TYPE=Release `
+            -DCMAKE_INSTALL_PREFIX=C:\opencv-install `
+            -DBUILD_SHARED_LIBS=ON `
+            -DBUILD_opencv_world=ON `
+            -DBUILD_TESTS=OFF `
+            -DBUILD_PERF_TESTS=OFF `
+            -DBUILD_EXAMPLES=OFF `
+            -DBUILD_opencv_python3=OFF `
+            -DWITH_CUDA=ON `
+            -DWITH_CUDNN=ON `
+            -DOPENCV_DNN_CUDA=ON `
+            -DCUDA_ARCH_BIN="7.5;8.0;8.6;8.9;9.0"
+          cmake --build C:\opencv-build --config Release --parallel 4
+          cmake --install C:\opencv-build --config Release
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install"
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Package
+        run: |
+          mkdir package
+          cp build/${{ env.BUILD_TYPE }}/YoloAnnotator.exe package/
+          cd package
+          windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
+          # OpenCV DLLs
+          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || true
+          # CUDA Runtime DLLs
+          cp "$env:CUDA_PATH\bin\cudart64_*.dll" . 2>$null || true
+          cp "$env:CUDA_PATH\bin\cublas64_*.dll" . 2>$null || true
+          cp "$env:CUDA_PATH\bin\cublasLt64_*.dll" . 2>$null || true
+          cp "$env:CUDA_PATH\bin\cufft64_*.dll" . 2>$null || true
+          cp "$env:CUDA_PATH\bin\cudnn*.dll" . 2>$null || true
+
+      - name: Create ZIP
+        run: Compress-Archive -Path package/* -DestinationPath YoloAnnotator-Windows-x64-CUDA.zip
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-Windows-x64-CUDA
+          path: YoloAnnotator-Windows-x64-CUDA.zip
+
+  # ==================== Linux x64 (CPU) ====================
+  build-linux-x64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libfuse2
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          modules: 'qtimageformats'
+          cache: true
+
+      - name: Install OpenCV
+        run: sudo apt-get install -y libopencv-dev
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Package AppImage
+        run: |
+          wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
+
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/applications
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+
+          cp build/YoloAnnotator AppDir/usr/bin/
+
+          cat > AppDir/usr/share/applications/YoloAnnotator.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=YoloAnnotator
+          Exec=YoloAnnotator
+          Icon=YoloAnnotator
+          Categories=Graphics;
+          EOF
+
+          cp AppDir/usr/share/applications/YoloAnnotator.desktop AppDir/
+          touch AppDir/YoloAnnotator.png
+
+          ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/YoloAnnotator.desktop -appimage -bundle-non-qt-libs
+
+          mv YoloAnnotator*.AppImage YoloAnnotator-Linux-x86_64.AppImage
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-Linux-x86_64
+          path: YoloAnnotator-Linux-x86_64.AppImage
+
+  # ==================== Linux x64 OpenVINO ====================
+  build-linux-openvino:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libfuse2
+          sudo apt-get install -y cmake g++ wget gpg
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          modules: 'qtimageformats'
+          cache: true
+
+      - name: Install OpenVINO
+        run: |
+          wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+          sudo gpg --dearmor -o /usr/share/keyrings/intel-openvino.gpg GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
+          echo "deb [signed-by=/usr/share/keyrings/intel-openvino.gpg] https://apt.repos.intel.com/openvino/2024 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/openvino.list
+          sudo apt-get update
+          sudo apt-get install -y openvino
+
+      - name: Cache OpenCV Build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: /opt/opencv-install
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino-linux
+
+      - name: Build OpenCV with OpenVINO
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
+          unzip opencv.zip
+          source /opt/intel/openvino/setupvars.sh
+          cmake -B opencv-build -S opencv-${{ env.OPENCV_VERSION }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/opt/opencv-install \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_opencv_world=ON \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_opencv_python3=OFF \
+            -DWITH_OPENVINO=ON
+          cmake --build opencv-build --parallel $(nproc)
+          sudo cmake --install opencv-build
+
+      - name: Configure CMake
+        run: |
+          source /opt/intel/openvino/setupvars.sh
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Package AppImage
+        run: |
+          wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
+
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/applications
+
+          cp build/YoloAnnotator AppDir/usr/bin/
+
+          # Copy OpenVINO libs
+          cp /opt/intel/openvino/runtime/lib/intel64/*.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /opt/intel/openvino/runtime/3rdparty/tbb/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
+
+          # Copy OpenCV libs
+          cp /opt/opencv-install/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
+
+          cat > AppDir/usr/share/applications/YoloAnnotator.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=YoloAnnotator
+          Exec=YoloAnnotator
+          Icon=YoloAnnotator
+          Categories=Graphics;
+          EOF
+
+          cp AppDir/usr/share/applications/YoloAnnotator.desktop AppDir/
+          touch AppDir/YoloAnnotator.png
+
+          ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/YoloAnnotator.desktop -appimage -bundle-non-qt-libs
+
+          mv YoloAnnotator*.AppImage YoloAnnotator-Linux-x86_64-OpenVINO.AppImage
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-Linux-x86_64-OpenVINO
+          path: YoloAnnotator-Linux-x86_64-OpenVINO.AppImage
+
+  # ==================== Linux x64 CUDA ====================
+  build-linux-cuda:
+    runs-on: ubuntu-22.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libfuse2
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'linux'
+          target: 'desktop'
+          arch: 'gcc_64'
+          modules: 'qtimageformats'
+          cache: true
+
+      - name: Install CUDA Toolkit
+        uses: Jimver/cuda-toolkit@v0.2.16
+        with:
+          cuda: '11.8.0'
+          method: 'network'
+
+      - name: Install cuDNN
+        run: |
+          wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
+          sudo dpkg -i cuda-keyring_1.1-1_all.deb
+          sudo apt-get update
+          sudo apt-get install -y libcudnn8 libcudnn8-dev
+
+      - name: Cache OpenCV Build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: /opt/opencv-install
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-linux
+
+      - name: Build OpenCV with CUDA
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
+          unzip opencv.zip
+          cmake -B opencv-build -S opencv-${{ env.OPENCV_VERSION }} \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/opt/opencv-install \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_opencv_world=ON \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_opencv_python3=OFF \
+            -DWITH_CUDA=ON \
+            -DWITH_CUDNN=ON \
+            -DOPENCV_DNN_CUDA=ON \
+            -DCUDA_ARCH_BIN="7.5;8.0;8.6;8.9;9.0"
+          cmake --build opencv-build --parallel $(nproc)
+          sudo cmake --install opencv-build
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
+
+      - name: Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Package AppImage
+        run: |
+          wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
+          chmod +x linuxdeployqt-continuous-x86_64.AppImage
+
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
+          mkdir -p AppDir/usr/share/applications
+
+          cp build/YoloAnnotator AppDir/usr/bin/
+
+          # Copy CUDA libs (minimal set for inference)
+          cp /usr/local/cuda/lib64/libcudart.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /usr/local/cuda/lib64/libcublas.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /usr/local/cuda/lib64/libcublasLt.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /usr/local/cuda/lib64/libcufft.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /usr/lib/x86_64-linux-gnu/libcudnn*.so* AppDir/usr/lib/ 2>/dev/null || true
+
+          # Copy OpenCV libs
+          cp /opt/opencv-install/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
+
+          cat > AppDir/usr/share/applications/YoloAnnotator.desktop << 'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=YoloAnnotator
+          Exec=YoloAnnotator
+          Icon=YoloAnnotator
+          Categories=Graphics;
+          EOF
+
+          cp AppDir/usr/share/applications/YoloAnnotator.desktop AppDir/
+          touch AppDir/YoloAnnotator.png
+
+          ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/YoloAnnotator.desktop -appimage -bundle-non-qt-libs
+
+          mv YoloAnnotator*.AppImage YoloAnnotator-Linux-x86_64-CUDA.AppImage
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-Linux-x86_64-CUDA
+          path: YoloAnnotator-Linux-x86_64-CUDA.AppImage
 
   # ==================== macOS Intel (x86_64) ====================
   build-macos-intel:
@@ -130,72 +580,10 @@ jobs:
           name: YoloAnnotator-macOS-AppleSilicon
           path: YoloAnnotator-macOS-AppleSilicon.dmg
 
-  # ==================== Linux x86_64 ====================
-  build-linux-x64:
-    runs-on: ubuntu-22.04
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install Dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libfuse2
-
-      - name: Install Qt
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          host: 'linux'
-          target: 'desktop'
-          arch: 'gcc_64'
-          modules: 'qtimageformats'
-          cache: true
-
-      - name: Install OpenCV
-        run: sudo apt-get install -y libopencv-dev
-
-      - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
-
-      - name: Build
-        run: cmake --build build --config ${{ env.BUILD_TYPE }}
-
-      - name: Package AppImage
-        run: |
-          wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
-          chmod +x linuxdeployqt-continuous-x86_64.AppImage
-
-          mkdir -p AppDir/usr/bin
-          mkdir -p AppDir/usr/share/applications
-          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
-
-          cp build/YoloAnnotator AppDir/usr/bin/
-
-          cat > AppDir/usr/share/applications/YoloAnnotator.desktop << 'EOF'
-          [Desktop Entry]
-          Type=Application
-          Name=YoloAnnotator
-          Exec=YoloAnnotator
-          Icon=YoloAnnotator
-          Categories=Graphics;
-          EOF
-
-          cp AppDir/usr/share/applications/YoloAnnotator.desktop AppDir/
-          touch AppDir/YoloAnnotator.png
-
-          ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/YoloAnnotator.desktop -appimage -bundle-non-qt-libs
-
-          mv YoloAnnotator*.AppImage YoloAnnotator-Linux-x86_64.AppImage
-
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: YoloAnnotator-Linux-x86_64
-          path: YoloAnnotator-Linux-x86_64.AppImage
-
   # ==================== Linux ARM64 (Jetson) ====================
   build-linux-arm64:
     runs-on: ubuntu-22.04
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -250,26 +638,34 @@ jobs:
 
   # ==================== Release ====================
   release:
-    needs: [build-windows-x64, build-macos-intel, build-macos-arm64, build-linux-x64, build-linux-arm64]
+    needs: [build-windows-x64, build-windows-openvino, build-windows-cuda, build-linux-x64, build-linux-openvino, build-linux-cuda, build-macos-intel, build-macos-arm64, build-linux-arm64]
     runs-on: ubuntu-latest
-    if: startsWith(github.ref, 'refs/tags/')
+    if: always() && startsWith(github.ref, 'refs/tags/') && contains(needs.*.result, 'success')
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
+      - name: List artifacts
+        run: find artifacts -type f
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
             artifacts/YoloAnnotator-Windows-x64/YoloAnnotator-Windows-x64.zip
+            artifacts/YoloAnnotator-Windows-x64-OpenVINO/YoloAnnotator-Windows-x64-OpenVINO.zip
+            artifacts/YoloAnnotator-Windows-x64-CUDA/YoloAnnotator-Windows-x64-CUDA.zip
+            artifacts/YoloAnnotator-Linux-x86_64/YoloAnnotator-Linux-x86_64.AppImage
+            artifacts/YoloAnnotator-Linux-x86_64-OpenVINO/YoloAnnotator-Linux-x86_64-OpenVINO.AppImage
+            artifacts/YoloAnnotator-Linux-x86_64-CUDA/YoloAnnotator-Linux-x86_64-CUDA.AppImage
             artifacts/YoloAnnotator-macOS-Intel/YoloAnnotator-macOS-Intel.dmg
             artifacts/YoloAnnotator-macOS-AppleSilicon/YoloAnnotator-macOS-AppleSilicon.dmg
-            artifacts/YoloAnnotator-Linux-x86_64/YoloAnnotator-Linux-x86_64.AppImage
             artifacts/YoloAnnotator-Linux-ARM64/YoloAnnotator-Linux-ARM64.tar.gz
           draft: false
           prerelease: false
           generate_release_notes: true
+          fail_on_unmatched_files: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
