@@ -211,9 +211,10 @@ jobs:
           install: |
             apt-get update
             apt-get install -y cmake g++ make wget
-            apt-get install -y qt6-base-dev libqt6widgets6 libqt6gui6 libqt6core6
+            apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev
+            apt-get install -y qt6-base-dev libqt6widgets6 libqt6gui6 libqt6core6 libqt6opengl6-dev
             apt-get install -y libopencv-dev
-            apt-get install -y libxcb-cursor0 libfuse2 file
+            apt-get install -y libxcb-cursor0 libfuse2 file libxkbcommon-dev
           run: |
             cd /workspace
             cmake -B build -DCMAKE_BUILD_TYPE=Release
