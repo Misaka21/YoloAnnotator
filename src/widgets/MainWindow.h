@@ -37,6 +37,7 @@ private slots:
     void onAnnotationSelected(int index);
     void onAnnotationDoubleClicked(int index);
     void onDeleteAnnotation();
+    void onClearAnnotations();
     void onClassItemClicked(QListWidgetItem* item);
 
     // 工具

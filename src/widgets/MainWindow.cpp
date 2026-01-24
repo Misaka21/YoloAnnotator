@@ -62,9 +62,6 @@ void MainWindow::setupMenus() {
     QAction* saveAction = fileMenu->addAction("保存(&S)");
     saveAction->setShortcut(QKeySequence("Ctrl+S"));
     connect(saveAction, &QAction::triggered, this, &MainWindow::onSaveAnnotation);
-    m_autoSaveAction = fileMenu->addAction("自动保存(&A)");
-    m_autoSaveAction->setCheckable(true); m_autoSaveAction->setChecked(m_autoSave);
-    connect(m_autoSaveAction, &QAction::toggled, [this](bool c){ m_autoSave = c; });
     fileMenu->addSeparator();
     QAction* exitAction = fileMenu->addAction("退出(&X)");
     exitAction->setShortcut(QKeySequence("Alt+F4"));
@@ -112,6 +109,13 @@ void MainWindow::setupToolBar() {
     QAction* saveAction = toolbar->addAction("保存");
     saveAction->setShortcut(QKeySequence("Ctrl+S"));
     connect(saveAction, &QAction::triggered, this, &MainWindow::onSaveAnnotation);
+    QAction* clearAction = toolbar->addAction("清空");
+    connect(clearAction, &QAction::triggered, this, &MainWindow::onClearAnnotations);
+    toolbar->addSeparator();
+    m_autoSaveAction = toolbar->addAction("自动保存");
+    m_autoSaveAction->setCheckable(true);
+    m_autoSaveAction->setChecked(m_autoSave);
+    connect(m_autoSaveAction, &QAction::toggled, [this](bool checked) { m_autoSave = checked; });
 }
 
 void MainWindow::setupConnections() {
@@ -216,6 +220,14 @@ void MainWindow::onAnnotationChanged() { m_modified = true; updateAnnotationList
 void MainWindow::onAnnotationSelected(int index) { m_annotationList->blockSignals(true); m_annotationList->setCurrentRow(index); m_annotationList->blockSignals(false); }
 void MainWindow::onAnnotationDoubleClicked(int index) { Q_UNUSED(index); }
 void MainWindow::onDeleteAnnotation() { int index = m_canvasView->selectedAnnotation(); if (index >= 0) m_canvasView->removeAnnotation(index); }
+
+void MainWindow::onClearAnnotations() {
+    if (m_canvasView->annotations().isEmpty()) return;
+    int ret = QMessageBox::question(this, "确认清空", "确定要清空当前图片的所有标注吗?", QMessageBox::Yes | QMessageBox::No);
+    if (ret == QMessageBox::Yes) {
+        m_canvasView->clearAnnotations();
+    }
+}
 
 void MainWindow::onClassItemClicked(QListWidgetItem* item) {
     int classId = m_classList->row(item);
