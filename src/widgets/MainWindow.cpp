@@ -12,6 +12,7 @@
 #include <QActionGroup>
 #include <QProgressDialog>
 #include <QApplication>
+#include <QColorDialog>
 #include "inference/YoloDetector.h"
 #include "inference/ModelSettingsDialog.h"
 
@@ -85,6 +86,37 @@ void MainWindow::setupMenus() {
     QAction* zoomFitAction = viewMenu->addAction("适应窗口(&F)");
     zoomFitAction->setShortcut(QKeySequence("Ctrl+0"));
     connect(zoomFitAction, &QAction::triggered, m_canvasView, &CanvasView::zoomFit);
+    viewMenu->addSeparator();
+
+    // 十字线选项
+    QAction* crossHairAction = viewMenu->addAction("显示十字辅助线(&H)");
+    crossHairAction->setCheckable(true);
+    crossHairAction->setChecked(m_canvasView->crossHairEnabled());
+    connect(crossHairAction, &QAction::toggled, m_canvasView, &CanvasView::setCrossHairEnabled);
+
+    QAction* crossHairColorAction = viewMenu->addAction("十字线颜色...");
+    connect(crossHairColorAction, &QAction::triggered, [this]() {
+        QColor color = QColorDialog::getColor(m_canvasView->crossHairColor(), this, "选择十字线颜色", QColorDialog::ShowAlphaChannel);
+        if (color.isValid()) {
+            m_canvasView->setCrossHairColor(color);
+        }
+    });
+
+    viewMenu->addSeparator();
+
+    // 标注框颜色选项
+    QAction* annColorAction = viewMenu->addAction("自定义标注框颜色(&C)");
+    annColorAction->setCheckable(true);
+    annColorAction->setChecked(m_canvasView->annotationColorEnabled());
+    connect(annColorAction, &QAction::toggled, m_canvasView, &CanvasView::setAnnotationColorEnabled);
+
+    QAction* annColorPickAction = viewMenu->addAction("标注框颜色...");
+    connect(annColorPickAction, &QAction::triggered, [this]() {
+        QColor color = QColorDialog::getColor(m_canvasView->annotationColor(), this, "选择标注框颜色");
+        if (color.isValid()) {
+            m_canvasView->setAnnotationColor(color);
+        }
+    });
     QMenu* toolsMenu = menuBar()->addMenu("工具(&T)");
     QAction* skeletonAction = toolsMenu->addAction("配置骨架(&S)...");
     connect(skeletonAction, &QAction::triggered, this, &MainWindow::onEditSkeletonConfig);

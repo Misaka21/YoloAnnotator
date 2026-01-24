@@ -23,7 +23,7 @@ CanvasView::CanvasView(QWidget* parent)
     setMouseTracking(true);
 
     // 创建十字辅助线
-    QPen crossPen(QColor(0, 255, 0, 180), 1, Qt::DashLine);
+    QPen crossPen(m_crossHairColor, 1, Qt::DashLine);
     m_crossHairH = m_scene->addLine(0, 0, 0, 0, crossPen);
     m_crossHairV = m_scene->addLine(0, 0, 0, 0, crossPen);
     m_crossHairH->setZValue(1000);
@@ -45,13 +45,13 @@ void CanvasView::setImage(const QImage& image) {
     m_annotationItems.clear();
 
     // 重新创建十字辅助线
-    QPen crossPen(QColor(0, 255, 0, 180), 1, Qt::DashLine);
+    QPen crossPen(m_crossHairColor, 1, Qt::DashLine);
     m_crossHairH = m_scene->addLine(0, 0, 0, 0, crossPen);
     m_crossHairV = m_scene->addLine(0, 0, 0, 0, crossPen);
     m_crossHairH->setZValue(1000);
     m_crossHairV->setZValue(1000);
-    m_crossHairH->setVisible(m_mode == EditMode::DrawBBox);
-    m_crossHairV->setVisible(m_mode == EditMode::DrawBBox);
+    m_crossHairH->setVisible(m_mode == EditMode::DrawBBox && m_crossHairEnabled);
+    m_crossHairV->setVisible(m_mode == EditMode::DrawBBox && m_crossHairEnabled);
 
     // 添加图片
     m_pixmapItem = m_scene->addPixmap(QPixmap::fromImage(image));
@@ -121,8 +121,8 @@ void CanvasView::setEditMode(EditMode mode) {
     } else {
         setCursor(Qt::ArrowCursor);
     }
-    // 只在边界框模式下显示十字线
-    bool showCross = (mode == EditMode::DrawBBox);
+    // 只在边界框模式下且启用时显示十字线
+    bool showCross = (mode == EditMode::DrawBBox) && m_crossHairEnabled;
     m_crossHairH->setVisible(showCross);
     m_crossHairV->setVisible(showCross);
 }
@@ -438,7 +438,14 @@ void CanvasView::updateAnnotationItems() {
         double h = bbox.height() * imgH;
 
         // 创建简单的矩形和文字
-        QColor color = (i == m_selectedIndex) ? Qt::red : Qt::green;
+        QColor color;
+        if (i == m_selectedIndex) {
+            color = Qt::red;  // 选中始终红色
+        } else if (m_annotationColorEnabled) {
+            color = m_annotationColor;  // 使用自定义颜色
+        } else {
+            color = Qt::green;  // 默认绿色
+        }
         int penWidth = (i == m_selectedIndex) ? 3 : 2;
 
         auto* rectItem = m_scene->addRect(x, y, w, h, QPen(color, penWidth));
@@ -638,10 +645,34 @@ void CanvasView::leaveEvent(QEvent* event) {
 }
 
 void CanvasView::enterEvent(QEnterEvent* event) {
-    // 鼠标进入时，如果是边界框模式则显示十字线
-    if (m_mode == EditMode::DrawBBox) {
+    // 鼠标进入时，如果是边界框模式且启用十字线则显示
+    if (m_mode == EditMode::DrawBBox && m_crossHairEnabled) {
         m_crossHairH->setVisible(true);
         m_crossHairV->setVisible(true);
     }
     QGraphicsView::enterEvent(event);
+}
+
+void CanvasView::setCrossHairEnabled(bool enabled) {
+    m_crossHairEnabled = enabled;
+    bool show = enabled && (m_mode == EditMode::DrawBBox);
+    m_crossHairH->setVisible(show);
+    m_crossHairV->setVisible(show);
+}
+
+void CanvasView::setCrossHairColor(const QColor& color) {
+    m_crossHairColor = color;
+    QPen pen(color, 1, Qt::DashLine);
+    m_crossHairH->setPen(pen);
+    m_crossHairV->setPen(pen);
+}
+
+void CanvasView::setAnnotationColorEnabled(bool enabled) {
+    m_annotationColorEnabled = enabled;
+    updateAnnotationItems();
+}
+
+void CanvasView::setAnnotationColor(const QColor& color) {
+    m_annotationColor = color;
+    updateAnnotationItems();
 }

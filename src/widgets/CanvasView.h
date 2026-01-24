@@ -64,6 +64,17 @@ public:
     // 坐标变换
     const CoordinateTransform& coordTransform() const { return m_transform; }
 
+    // 显示设置
+    void setCrossHairEnabled(bool enabled);
+    bool crossHairEnabled() const { return m_crossHairEnabled; }
+    void setCrossHairColor(const QColor& color);
+    QColor crossHairColor() const { return m_crossHairColor; }
+
+    void setAnnotationColorEnabled(bool enabled);
+    bool annotationColorEnabled() const { return m_annotationColorEnabled; }
+    void setAnnotationColor(const QColor& color);
+    QColor annotationColor() const { return m_annotationColor; }
+
     // 缩放
     void zoomIn();
     void zoomOut();
@@ -127,6 +138,12 @@ private:
     // 十字辅助线
     QGraphicsLineItem* m_crossHairH = nullptr;
     QGraphicsLineItem* m_crossHairV = nullptr;
+    bool m_crossHairEnabled = true;
+    QColor m_crossHairColor = QColor(0, 255, 0, 180);
+
+    // 标注框颜色设置
+    bool m_annotationColorEnabled = false;
+    QColor m_annotationColor = Qt::green;
 
     void updateScene();
     void updateAnnotationItems();
