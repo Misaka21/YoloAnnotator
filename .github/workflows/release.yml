@@ -18,13 +18,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           host: 'windows'
           target: 'desktop'
           arch: 'win64_msvc2019_64'
           modules: 'qtimageformats'
+          cache: true
 
       - name: Install OpenCV
         run: |
@@ -62,13 +63,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           host: 'mac'
           target: 'desktop'
           arch: 'clang_64'
           modules: 'qtimageformats'
+          cache: true
 
       - name: Install OpenCV
         run: brew install opencv
@@ -98,13 +100,14 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           host: 'mac'
           target: 'desktop'
           arch: 'clang_64'
           modules: 'qtimageformats'
+          cache: true
 
       - name: Install OpenCV
         run: brew install opencv
@@ -139,13 +142,14 @@ jobs:
           sudo apt-get install -y libxcb-cursor0 libxkbcommon-x11-0 libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-shape0 libfuse2
 
       - name: Install Qt
-        uses: jurplel/install-qt-action@v3
+        uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           host: 'linux'
           target: 'desktop'
           arch: 'gcc_64'
           modules: 'qtimageformats'
+          cache: true
 
       - name: Install OpenCV
         run: sudo apt-get install -y libopencv-dev
