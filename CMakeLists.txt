@@ -10,8 +10,14 @@ set(CMAKE_AUTOUIC ON)
 # Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
-# OpenCV (MinGW编译版本)
-set(OpenCV_DIR "C:/opencv/opencv/build-mingw/install")
+# OpenCV
+# 可通过 -DOpenCV_DIR=xxx 指定路径，或让CMake自动查找
+if(NOT DEFINED OpenCV_DIR AND WIN32)
+    # Windows默认路径 (本地开发用)
+    if(EXISTS "C:/opencv/opencv/build-mingw/install")
+        set(OpenCV_DIR "C:/opencv/opencv/build-mingw/install")
+    endif()
+endif()
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio dnn)
 message(STATUS "OpenCV found: ${OpenCV_VERSION}")
 
@@ -67,5 +73,15 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
 if(WIN32)
     set_target_properties(${PROJECT_NAME} PROPERTIES
         WIN32_EXECUTABLE TRUE
+    )
+endif()
+
+# macOS特殊处理
+if(APPLE)
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        MACOSX_BUNDLE TRUE
+        MACOSX_BUNDLE_GUI_IDENTIFIER "com.yolo.annotator"
+        MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
+        MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
     )
 endif()
