@@ -24,8 +24,9 @@ bool YoloDetector::loadModel(const QString& onnxPath)
 
     try {
         m_net = cv::dnn::readNetFromONNX(onnxPath.toStdString());
-        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
-        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+
+        // 应用当前后端设置
+        setBackend(m_backend);
 
         m_modelPath = onnxPath;
 
@@ -67,6 +68,28 @@ QString YoloDetector::modelTypeString() const
         return QString("Pose (%1 keypoints)").arg(m_numKeypoints);
     default:
         return "Unknown";
+    }
+}
+
+void YoloDetector::setBackend(InferenceBackend backend)
+{
+    m_backend = backend;
+    if (m_net.empty()) return;
+
+    switch (backend) {
+    case InferenceBackend::OpenCL:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL);
+        break;
+    case InferenceBackend::OpenCL_FP16:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_OPENCL_FP16);
+        break;
+    case InferenceBackend::CPU:
+    default:
+        m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
+        m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
+        break;
     }
 }
 

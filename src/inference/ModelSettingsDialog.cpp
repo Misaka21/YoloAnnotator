@@ -66,8 +66,15 @@ void ModelSettingsDialog::setupUI()
     m_iouSpinBox->setValue(m_detector->iouThreshold());
     m_iouSpinBox->setDecimals(2);
 
+    m_backendCombo = new QComboBox();
+    m_backendCombo->addItem("CPU", static_cast<int>(InferenceBackend::CPU));
+    m_backendCombo->addItem("OpenCL (GPU)", static_cast<int>(InferenceBackend::OpenCL));
+    m_backendCombo->addItem("OpenCL FP16 (GPU 快速)", static_cast<int>(InferenceBackend::OpenCL_FP16));
+    m_backendCombo->setCurrentIndex(static_cast<int>(m_detector->backend()));
+
     settingsLayout->addRow("置信度阈值:", m_confSpinBox);
     settingsLayout->addRow("IoU 阈值:", m_iouSpinBox);
+    settingsLayout->addRow("推理后端:", m_backendCombo);
 
     mainLayout->addWidget(settingsGroup);
 
@@ -120,6 +127,7 @@ void ModelSettingsDialog::onApplySettings()
 {
     m_detector->setConfThreshold(m_confSpinBox->value());
     m_detector->setIouThreshold(m_iouSpinBox->value());
+    m_detector->setBackend(static_cast<InferenceBackend>(m_backendCombo->currentIndex()));
     QMessageBox::information(this, "提示", "参数已应用");
 }
 

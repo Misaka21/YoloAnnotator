@@ -2,6 +2,7 @@
 #include <QDialog>
 #include <QLineEdit>
 #include <QDoubleSpinBox>
+#include <QComboBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QGroupBox>
@@ -37,6 +38,7 @@ private:
     // 推理参数
     QDoubleSpinBox* m_confSpinBox;
     QDoubleSpinBox* m_iouSpinBox;
+    QComboBox* m_backendCombo;
 
     void setupUI();
     void updateModelInfo();

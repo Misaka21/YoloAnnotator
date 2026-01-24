@@ -15,6 +15,15 @@ enum class ModelType {
 };
 
 /**
+ * @brief 推理后端
+ */
+enum class InferenceBackend {
+    CPU,
+    OpenCL,
+    OpenCL_FP16
+};
+
+/**
  * @brief Letterbox 预处理信息
  */
 struct LetterboxInfo {
@@ -51,6 +60,10 @@ public:
     void setIouThreshold(float iou) { m_iouThreshold = iou; }
     float iouThreshold() const { return m_iouThreshold; }
 
+    // 推理后端
+    void setBackend(InferenceBackend backend);
+    InferenceBackend backend() const { return m_backend; }
+
     // 推理
     QVector<Annotation> detect(const QImage& image);
     QVector<Annotation> detect(const cv::Mat& image);
@@ -69,6 +82,7 @@ private:
     int m_numKeypoints = 0;
     float m_confThreshold = 0.25f;
     float m_iouThreshold = 0.45f;
+    InferenceBackend m_backend = InferenceBackend::CPU;
 
     // 内部方法
     cv::Mat preprocess(const cv::Mat& src, LetterboxInfo& info);
