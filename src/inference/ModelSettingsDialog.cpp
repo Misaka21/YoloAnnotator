@@ -69,7 +69,7 @@ void ModelSettingsDialog::setupUI()
     m_backendCombo = new QComboBox();
     m_backendCombo->addItem("CPU", static_cast<int>(InferenceBackend::CPU));
     m_backendCombo->addItem("OpenCL (GPU)", static_cast<int>(InferenceBackend::OpenCL));
-    m_backendCombo->addItem("OpenCL FP16 (GPU 快速)", static_cast<int>(InferenceBackend::OpenCL_FP16));
+    m_backendCombo->addItem("OpenCL FP16 (快速，精度略低)", static_cast<int>(InferenceBackend::OpenCL_FP16));
     m_backendCombo->setCurrentIndex(static_cast<int>(m_detector->backend()));
 
     settingsLayout->addRow("置信度阈值:", m_confSpinBox);
