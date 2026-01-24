@@ -125,6 +125,11 @@ void ModelSettingsDialog::onLoadModel()
 
 void ModelSettingsDialog::onApplySettings()
 {
+    if (!m_detector->isLoaded()) {
+        QMessageBox::warning(this, "警告", "请先加载模型");
+        return;
+    }
+
     m_detector->setConfThreshold(m_confSpinBox->value());
     m_detector->setIouThreshold(m_iouSpinBox->value());
     m_detector->setBackend(static_cast<InferenceBackend>(m_backendCombo->currentIndex()));
