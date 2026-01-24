@@ -441,10 +441,20 @@ void CanvasView::updateAnnotationItems() {
         QColor color;
         if (i == m_selectedIndex) {
             color = Qt::red;  // 选中始终红色
-        } else if (m_annotationColorEnabled) {
-            color = m_annotationColor;  // 使用自定义颜色
         } else {
-            color = Qt::green;  // 默认绿色
+            // 根据类别名称前缀设置颜色
+            QString lowerName = className.toLower();
+            if (lowerName.startsWith("r-") || lowerName.startsWith("r_")) {
+                color = Qt::red;
+            } else if (lowerName.startsWith("b-") || lowerName.startsWith("b_")) {
+                color = Qt::blue;
+            } else if (lowerName.startsWith("w-") || lowerName.startsWith("w_") || lowerName.startsWith("w")) {
+                color = Qt::white;
+            } else if (lowerName.startsWith("p-") || lowerName.startsWith("p_") || lowerName.startsWith("p")) {
+                color = QColor(255, 105, 180);  // 粉色
+            } else {
+                color = Qt::green;  // 默认绿色
+            }
         }
         int penWidth = (i == m_selectedIndex) ? 3 : 2;
 
@@ -665,14 +675,4 @@ void CanvasView::setCrossHairColor(const QColor& color) {
     QPen pen(color, 1, Qt::DashLine);
     m_crossHairH->setPen(pen);
     m_crossHairV->setPen(pen);
-}
-
-void CanvasView::setAnnotationColorEnabled(bool enabled) {
-    m_annotationColorEnabled = enabled;
-    updateAnnotationItems();
-}
-
-void CanvasView::setAnnotationColor(const QColor& color) {
-    m_annotationColor = color;
-    updateAnnotationItems();
 }

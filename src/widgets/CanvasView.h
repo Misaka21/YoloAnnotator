@@ -70,11 +70,6 @@ public:
     void setCrossHairColor(const QColor& color);
     QColor crossHairColor() const { return m_crossHairColor; }
 
-    void setAnnotationColorEnabled(bool enabled);
-    bool annotationColorEnabled() const { return m_annotationColorEnabled; }
-    void setAnnotationColor(const QColor& color);
-    QColor annotationColor() const { return m_annotationColor; }
-
     // 缩放
     void zoomIn();
     void zoomOut();
@@ -140,10 +135,6 @@ private:
     QGraphicsLineItem* m_crossHairV = nullptr;
     bool m_crossHairEnabled = true;
     QColor m_crossHairColor = QColor(0, 255, 0, 180);
-
-    // 标注框颜色设置
-    bool m_annotationColorEnabled = false;
-    QColor m_annotationColor = Qt::green;
 
     void updateScene();
     void updateAnnotationItems();

@@ -101,22 +101,6 @@ void MainWindow::setupMenus() {
             m_canvasView->setCrossHairColor(color);
         }
     });
-
-    viewMenu->addSeparator();
-
-    // 标注框颜色选项
-    QAction* annColorAction = viewMenu->addAction("自定义标注框颜色(&C)");
-    annColorAction->setCheckable(true);
-    annColorAction->setChecked(m_canvasView->annotationColorEnabled());
-    connect(annColorAction, &QAction::toggled, m_canvasView, &CanvasView::setAnnotationColorEnabled);
-
-    QAction* annColorPickAction = viewMenu->addAction("标注框颜色...");
-    connect(annColorPickAction, &QAction::triggered, [this]() {
-        QColor color = QColorDialog::getColor(m_canvasView->annotationColor(), this, "选择标注框颜色");
-        if (color.isValid()) {
-            m_canvasView->setAnnotationColor(color);
-        }
-    });
     QMenu* toolsMenu = menuBar()->addMenu("工具(&T)");
     QAction* skeletonAction = toolsMenu->addAction("配置骨架(&S)...");
     connect(skeletonAction, &QAction::triggered, this, &MainWindow::onEditSkeletonConfig);
