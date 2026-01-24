@@ -457,8 +457,10 @@ void CanvasView::updateAnnotationItems() {
             }
         }
         int penWidth = (i == m_selectedIndex) ? 3 : 2;
+        QColor fillColor = color;
+        fillColor.setAlpha(40);  // 淡淡的填充
 
-        auto* rectItem = m_scene->addRect(x, y, w, h, QPen(color, penWidth));
+        auto* rectItem = m_scene->addRect(x, y, w, h, QPen(color, penWidth), QBrush(fillColor));
         rectItem->setZValue(1);
         m_annotationItems.append(rectItem);
 
