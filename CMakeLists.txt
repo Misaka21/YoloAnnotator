@@ -14,9 +14,22 @@ find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 # 可通过 -DOpenCV_DIR=xxx 指定路径，或让CMake自动查找
 if(NOT DEFINED OpenCV_DIR AND WIN32)
     # Windows默认路径 (本地开发用)
-    if(EXISTS "C:/opencv/opencv/build-mingw/install")
-        set(OpenCV_DIR "C:/opencv/opencv/build-mingw/install")
-    endif()
+    set(_OPENCV_PATHS
+        "C:/opencv/opencv/build-mingw/install"
+        "C:/opencv/build"
+        "C:/tools/opencv/build"
+    )
+    foreach(_path ${_OPENCV_PATHS})
+        if(EXISTS "${_path}/OpenCVConfig.cmake")
+            set(OpenCV_DIR "${_path}")
+            break()
+        endif()
+    endforeach()
+endif()
+
+# 提示用户当前使用的OpenCV路径
+if(DEFINED OpenCV_DIR)
+    message(STATUS "Using OpenCV_DIR: ${OpenCV_DIR}")
 endif()
 find_package(OpenCV REQUIRED COMPONENTS core imgproc imgcodecs videoio dnn)
 message(STATUS "OpenCV found: ${OpenCV_VERSION}")

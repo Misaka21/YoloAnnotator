@@ -4,6 +4,11 @@
 #include <QPalette>
 #include "widgets/MainWindow.h"
 
+// Qt 6.5+ 才有 colorScheme API
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
+#define HAS_COLOR_SCHEME 1
+#endif
+
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
 
@@ -16,7 +21,13 @@ int main(int argc, char *argv[]) {
 
     // 自适应系统主题
     auto applyTheme = [&app]() {
+#ifdef HAS_COLOR_SCHEME
         bool isDark = app.styleHints()->colorScheme() == Qt::ColorScheme::Dark;
+#else
+        // Qt 6.5 以下：检测系统调色板亮度
+        QPalette sysPalette = app.palette();
+        bool isDark = sysPalette.color(QPalette::Window).lightness() < 128;
+#endif
 
         if (isDark) {
             QPalette darkPalette;
@@ -40,9 +51,11 @@ int main(int argc, char *argv[]) {
     };
 
     applyTheme();
+#ifdef HAS_COLOR_SCHEME
     QObject::connect(app.styleHints(), &QStyleHints::colorSchemeChanged, [&]() {
         applyTheme();
     });
+#endif
 
     MainWindow window;
     window.show();
