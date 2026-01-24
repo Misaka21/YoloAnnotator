@@ -6,6 +6,7 @@
 #include <QHBoxLayout>
 #include <QGroupBox>
 #include <QDir>
+#include <QFile>
 #include <QShortcut>
 #include <QInputDialog>
 #include <QActionGroup>
@@ -269,9 +270,30 @@ void MainWindow::saveCurrentAnnotation() {
     if (m_currentIndex < 0 || m_currentIndex >= m_imageFiles.size()) return;
     QString imagePath = m_currentFolder + "/" + m_imageFiles[m_currentIndex];
     m_annotationIO.save(getAnnotationPath(imagePath), m_canvasView->annotations());
+    // 更新文件列表显示
+    if (QListWidgetItem* item = m_fileList->item(m_currentIndex)) {
+        bool hasAnnotation = !m_canvasView->annotations().isEmpty();
+        QString file = m_imageFiles[m_currentIndex];
+        item->setText(hasAnnotation ? QString::fromUtf8("✓ ") + file : QString::fromUtf8("   ") + file);
+        item->setForeground(hasAnnotation ? QColor(0, 180, 0) : palette().text().color());
+    }
 }
 
-void MainWindow::updateFileList() { m_fileList->clear(); for (const QString& file : m_imageFiles) m_fileList->addItem(file); }
+void MainWindow::updateFileList() {
+    m_fileList->clear();
+    for (const QString& file : m_imageFiles) {
+        QString imgPath = m_currentFolder + "/" + file;
+        QString txtPath = getAnnotationPath(imgPath);
+        bool hasAnnotation = QFile::exists(txtPath);
+        // 用符号表示是否有标注
+        QString displayText = hasAnnotation ? QString::fromUtf8("✓ ") + file : QString::fromUtf8("   ") + file;
+        QListWidgetItem* item = new QListWidgetItem(displayText);
+        if (hasAnnotation) {
+            item->setForeground(QColor(0, 180, 0));  // 绿色表示已标注
+        }
+        m_fileList->addItem(item);
+    }
+}
 
 void MainWindow::updateAnnotationList() {
     m_annotationList->clear();
