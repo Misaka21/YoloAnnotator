@@ -136,6 +136,7 @@ jobs:
           path: YoloAnnotator-Windows-x64-OpenVINO.zip
 
   # ==================== Windows x64 CUDA ====================
+  # 需要配置 CUDNN_WINDOWS_URL secret，否则此构建会被跳过
   build-windows-cuda:
     runs-on: windows-latest
     continue-on-error: true
@@ -161,7 +162,12 @@ jobs:
 
       - name: Download cuDNN
         run: |
-          curl -L -o cudnn.zip "${{ secrets.CUDNN_WINDOWS_URL }}"
+          $url = "${{ secrets.CUDNN_WINDOWS_URL }}"
+          if ([string]::IsNullOrEmpty($url)) {
+            Write-Host "::warning::CUDNN_WINDOWS_URL secret not configured, skipping CUDA build"
+            exit 1
+          }
+          curl -L -o cudnn.zip "$url"
           Expand-Archive cudnn.zip -DestinationPath C:\cudnn
           $cudnnDir = Get-ChildItem C:\cudnn -Directory | Select-Object -First 1
           cp "$cudnnDir\bin\*.dll" "$env:CUDA_PATH\bin\" -Force
