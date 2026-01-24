@@ -3,15 +3,16 @@ name: Build and Release
 on:
   push:
     tags:
-      - 'v*'  # 推送 v1.0.0 这样的tag时触发
-  workflow_dispatch:  # 手动触发
+      - 'v*'
+  workflow_dispatch:
 
 env:
   QT_VERSION: '6.6.0'
   BUILD_TYPE: Release
 
 jobs:
-  build-windows:
+  # ==================== Windows x64 ====================
+  build-windows-x64:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -31,8 +32,7 @@ jobs:
           echo "OpenCV_DIR=C:/tools/opencv/build" >> $env:GITHUB_ENV
 
       - name: Configure CMake
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="$env:OpenCV_DIR"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="$env:OpenCV_DIR"
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -43,13 +43,11 @@ jobs:
           cp build/${{ env.BUILD_TYPE }}/YoloAnnotator.exe package/
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
-          # 复制OpenCV DLL
           cp C:/tools/opencv/build/x64/vc16/bin/*.dll . 2>$null || true
           cp C:/tools/opencv/build/bin/*.dll . 2>$null || true
 
       - name: Create ZIP
-        run: |
-          Compress-Archive -Path package/* -DestinationPath YoloAnnotator-Windows-x64.zip
+        run: Compress-Archive -Path package/* -DestinationPath YoloAnnotator-Windows-x64.zip
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
@@ -57,8 +55,9 @@ jobs:
           name: YoloAnnotator-Windows-x64
           path: YoloAnnotator-Windows-x64.zip
 
-  build-macos:
-    runs-on: macos-latest
+  # ==================== macOS Intel (x86_64) ====================
+  build-macos-intel:
+    runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
 
@@ -75,8 +74,7 @@ jobs:
         run: brew install opencv
 
       - name: Configure CMake
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -85,15 +83,52 @@ jobs:
         run: |
           cd build
           macdeployqt YoloAnnotator.app -dmg
-          mv YoloAnnotator.dmg ../YoloAnnotator-macOS.dmg
+          mv YoloAnnotator.dmg ../YoloAnnotator-macOS-Intel.dmg
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: YoloAnnotator-macOS
-          path: YoloAnnotator-macOS.dmg
+          name: YoloAnnotator-macOS-Intel
+          path: YoloAnnotator-macOS-Intel.dmg
 
-  build-linux:
+  # ==================== macOS Apple Silicon (ARM64) ====================
+  build-macos-arm64:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: 'mac'
+          target: 'desktop'
+          arch: 'clang_64'
+          modules: 'qtimageformats'
+
+      - name: Install OpenCV
+        run: brew install opencv
+
+      - name: Configure CMake
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+
+      - name: Build
+        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+
+      - name: Package
+        run: |
+          cd build
+          macdeployqt YoloAnnotator.app -dmg
+          mv YoloAnnotator.dmg ../YoloAnnotator-macOS-AppleSilicon.dmg
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-macOS-AppleSilicon
+          path: YoloAnnotator-macOS-AppleSilicon.dmg
+
+  # ==================== Linux x86_64 ====================
+  build-linux-x64:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -113,31 +148,26 @@ jobs:
           modules: 'qtimageformats'
 
       - name: Install OpenCV
-        run: |
-          sudo apt-get install -y libopencv-dev
+        run: sudo apt-get install -y libopencv-dev
 
       - name: Configure CMake
-        run: |
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
 
-      - name: Package with linuxdeployqt
+      - name: Package AppImage
         run: |
-          # 下载linuxdeployqt
           wget -c "https://github.com/probonopd/linuxdeployqt/releases/download/continuous/linuxdeployqt-continuous-x86_64.AppImage"
           chmod +x linuxdeployqt-continuous-x86_64.AppImage
 
-          # 创建AppDir结构
           mkdir -p AppDir/usr/bin
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           cp build/YoloAnnotator AppDir/usr/bin/
 
-          # 创建desktop文件
-          cat > AppDir/usr/share/applications/YoloAnnotator.desktop << EOF
+          cat > AppDir/usr/share/applications/YoloAnnotator.desktop << 'EOF'
           [Desktop Entry]
           Type=Application
           Name=YoloAnnotator
@@ -146,11 +176,9 @@ jobs:
           Categories=Graphics;
           EOF
 
-          # 创建图标(使用默认)
           cp AppDir/usr/share/applications/YoloAnnotator.desktop AppDir/
           touch AppDir/YoloAnnotator.png
 
-          # 打包AppImage
           ./linuxdeployqt-continuous-x86_64.AppImage AppDir/usr/share/applications/YoloAnnotator.desktop -appimage -bundle-non-qt-libs
 
           mv YoloAnnotator*.AppImage YoloAnnotator-Linux-x86_64.AppImage
@@ -161,8 +189,60 @@ jobs:
           name: YoloAnnotator-Linux-x86_64
           path: YoloAnnotator-Linux-x86_64.AppImage
 
+  # ==================== Linux ARM64 (Jetson) ====================
+  build-linux-arm64:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build in ARM64 container
+        uses: uraimo/run-on-arch-action@v2
+        with:
+          arch: aarch64
+          distro: ubuntu22.04
+          githubToken: ${{ github.token }}
+          install: |
+            apt-get update
+            apt-get install -y cmake g++ make wget
+            apt-get install -y qt6-base-dev libqt6widgets6 libqt6gui6 libqt6core6
+            apt-get install -y libopencv-dev
+            apt-get install -y libxcb-cursor0 libfuse2 file
+          run: |
+            cmake -B build -DCMAKE_BUILD_TYPE=Release
+            cmake --build build --config Release
+
+            mkdir -p package
+            cp build/YoloAnnotator package/
+
+            # 复制依赖库
+            mkdir -p package/lib
+            ldd build/YoloAnnotator | grep "=> /" | awk '{print $3}' | xargs -I '{}' cp -v '{}' package/lib/ || true
+
+            # 创建启动脚本
+            cat > package/YoloAnnotator.sh << 'SCRIPT'
+            #!/bin/bash
+            DIR="$(cd "$(dirname "$0")" && pwd)"
+            export LD_LIBRARY_PATH="$DIR/lib:$LD_LIBRARY_PATH"
+            exec "$DIR/YoloAnnotator" "$@"
+            SCRIPT
+            chmod +x package/YoloAnnotator.sh
+
+            tar -czvf YoloAnnotator-Linux-ARM64.tar.gz -C package .
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: YoloAnnotator-Linux-ARM64
+          path: YoloAnnotator-Linux-ARM64.tar.gz
+
+  # ==================== Release ====================
   release:
-    needs: [build-windows, build-macos, build-linux]
+    needs: [build-windows-x64, build-macos-intel, build-macos-arm64, build-linux-x64, build-linux-arm64]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
@@ -176,8 +256,10 @@ jobs:
         with:
           files: |
             artifacts/YoloAnnotator-Windows-x64/YoloAnnotator-Windows-x64.zip
-            artifacts/YoloAnnotator-macOS/YoloAnnotator-macOS.dmg
+            artifacts/YoloAnnotator-macOS-Intel/YoloAnnotator-macOS-Intel.dmg
+            artifacts/YoloAnnotator-macOS-AppleSilicon/YoloAnnotator-macOS-AppleSilicon.dmg
             artifacts/YoloAnnotator-Linux-x86_64/YoloAnnotator-Linux-x86_64.AppImage
+            artifacts/YoloAnnotator-Linux-ARM64/YoloAnnotator-Linux-ARM64.tar.gz
           draft: false
           prerelease: false
           generate_release_notes: true
