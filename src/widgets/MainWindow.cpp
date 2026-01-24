@@ -115,13 +115,14 @@ void MainWindow::setupToolBar() {
 
 void MainWindow::setupConnections() {
     connect(m_fileList, &QListWidget::itemClicked, this, &MainWindow::onFileSelected);
-    connect(m_classList, &QListWidget::currentRowChanged, this, &MainWindow::onClassChanged);
+    connect(m_classList, &QListWidget::itemClicked, this, &MainWindow::onClassItemClicked);
     connect(m_annotationList, &QListWidget::currentRowChanged, m_canvasView, &CanvasView::setSelectedAnnotation);
     connect(m_canvasView, &CanvasView::annotationsChanged, this, &MainWindow::onAnnotationChanged);
     connect(m_canvasView, &CanvasView::annotationSelected, this, &MainWindow::onAnnotationSelected);
     connect(m_canvasView, &CanvasView::annotationDoubleClicked, this, &MainWindow::onAnnotationDoubleClicked);
     connect(m_canvasView, &CanvasView::zoomChanged, this, &MainWindow::onZoomChanged);
     connect(m_canvasView, &CanvasView::classSelectRequested, this, &MainWindow::onClassSelectRequested);
+    connect(m_canvasView, &CanvasView::contextMenuRequested, this, &MainWindow::onContextMenuRequested);
     connect(m_classList, &QListWidget::itemDoubleClicked, this, &MainWindow::onClassListDoubleClicked);
     connect(m_formatCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [this](int i){ m_annotationIO.setFormat(i==0 ? AnnotationIO::Detection : AnnotationIO::Pose); });
@@ -215,12 +216,16 @@ void MainWindow::onAnnotationSelected(int index) { m_annotationList->blockSignal
 void MainWindow::onAnnotationDoubleClicked(int index) { Q_UNUSED(index); }
 void MainWindow::onDeleteAnnotation() { int index = m_canvasView->selectedAnnotation(); if (index >= 0) m_canvasView->removeAnnotation(index); }
 
-void MainWindow::onClassChanged(int classId) {
+void MainWindow::onClassItemClicked(QListWidgetItem* item) {
+    int classId = m_classList->row(item);
     m_canvasView->setCurrentClass(classId);
     int selectedIdx = m_canvasView->selectedAnnotation();
     if (selectedIdx >= 0 && selectedIdx < m_canvasView->annotations().size()) {
         Annotation ann = m_canvasView->annotations()[selectedIdx];
-        if (ann.classId() != classId) { ann.setClassId(classId); m_canvasView->updateAnnotation(selectedIdx, ann); }
+        if (ann.classId() != classId) { 
+            ann.setClassId(classId); 
+            m_canvasView->updateAnnotation(selectedIdx, ann); 
+        }
     }
 }
 
@@ -306,6 +311,11 @@ void MainWindow::onClassSelectRequested(int annotationIndex) {
             ann.setClassId(classId); m_canvasView->updateAnnotation(annotationIndex, ann);
             m_canvasView->setCurrentClass(classId); m_classList->setCurrentRow(classId);
         }
+    } else {
+        // 用户取消，删除刚创建的标注
+        if (annotationIndex >= 0 && annotationIndex < m_canvasView->annotations().size()) {
+            m_canvasView->removeAnnotation(annotationIndex);
+        }
     }
 }
 
@@ -324,4 +334,32 @@ QString MainWindow::getAnnotationPath(const QString& imagePath) {
     QString baseName = info.completeBaseName();
     if (!m_labelsFolder.isEmpty()) return m_labelsFolder + "/" + baseName + ".txt";
     return info.absolutePath() + "/" + baseName + ".txt";
+}
+
+void MainWindow::onContextMenuRequested(int annotationIndex, const QPoint& globalPos) {
+    if (annotationIndex < 0 || annotationIndex >= m_canvasView->annotations().size()) return;
+    
+    QMenu menu(this);
+    
+    // 更改类别子菜单
+    QMenu* classMenu = menu.addMenu("更改类别");
+    for (int i = 0; i < m_classesLoader.classCount(); ++i) {
+        QAction* action = classMenu->addAction(QString("[%1] %2").arg(i).arg(m_classesLoader.className(i)));
+        action->setData(i);
+    }
+    
+    menu.addSeparator();
+    QAction* deleteAction = menu.addAction("删除");
+    
+    QAction* selected = menu.exec(globalPos);
+    if (selected == deleteAction) {
+        m_canvasView->removeAnnotation(annotationIndex);
+    } else if (selected && selected->data().isValid()) {
+        int classId = selected->data().toInt();
+        Annotation ann = m_canvasView->annotations()[annotationIndex];
+        ann.setClassId(classId);
+        m_canvasView->updateAnnotation(annotationIndex, ann);
+        m_canvasView->setCurrentClass(classId);
+        m_classList->setCurrentRow(classId);
+    }
 }

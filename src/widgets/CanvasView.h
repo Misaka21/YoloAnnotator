@@ -78,6 +78,7 @@ signals:
     void zoomChanged(double scale);
     void mouseMoved(const QPointF& imagePos);
     void classSelectRequested(int annotationIndex);  // 请求选择类别
+    void contextMenuRequested(int annotationIndex, const QPoint& globalPos);  // 右键菜单
 
 protected:
     void wheelEvent(QWheelEvent* event) override;
@@ -85,6 +86,7 @@ protected:
     void mouseMoveEvent(QMouseEvent* event) override;
     void mouseReleaseEvent(QMouseEvent* event) override;
     void mouseDoubleClickEvent(QMouseEvent* event) override;
+    void contextMenuEvent(QContextMenuEvent* event) override;
     void keyPressEvent(QKeyEvent* event) override;
     void resizeEvent(QResizeEvent* event) override;
 

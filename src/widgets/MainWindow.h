@@ -5,6 +5,7 @@
 #include <QComboBox>
 #include <QToolBar>
 #include <QStatusBar>
+#include <QMenu>
 #include <QSplitter>
 #include "CanvasView.h"
 #include "io/ClassesLoader.h"
@@ -36,7 +37,7 @@ private slots:
     void onAnnotationSelected(int index);
     void onAnnotationDoubleClicked(int index);
     void onDeleteAnnotation();
-    void onClassChanged(int classId);
+    void onClassItemClicked(QListWidgetItem* item);
 
     // 工具
     void onModeChanged(QAction* action);
@@ -48,6 +49,7 @@ private slots:
     // 类别选择
     void onClassSelectRequested(int annotationIndex);
     void onClassListDoubleClicked(QListWidgetItem* item);
+    void onContextMenuRequested(int annotationIndex, const QPoint& globalPos);
 
 private:
     // UI组件

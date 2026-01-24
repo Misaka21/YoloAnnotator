@@ -4,6 +4,7 @@
 #include <QMouseEvent>
 #include <QKeyEvent>
 #include <QScrollBar>
+#include <QContextMenuEvent>
 #include <cmath>
 
 CanvasView::CanvasView(QWidget* parent)
@@ -340,6 +341,18 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
         }
     }
     QGraphicsView::mouseDoubleClickEvent(event);
+}
+
+void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
+    QPointF scenePos = mapToScene(event->pos());
+    int annIdx = findAnnotationAt(scenePos);
+    if (annIdx >= 0) {
+        setSelectedAnnotation(annIdx);
+        emit contextMenuRequested(annIdx, event->globalPos());
+        event->accept();
+    } else {
+        QGraphicsView::contextMenuEvent(event);
+    }
 }
 
 void CanvasView::keyPressEvent(QKeyEvent* event) {
