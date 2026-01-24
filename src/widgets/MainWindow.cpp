@@ -339,10 +339,15 @@ void MainWindow::updateFileList() {
 }
 
 void MainWindow::updateAnnotationList() {
+    int selectedIdx = m_canvasView->selectedAnnotation();
+    m_annotationList->blockSignals(true);
     m_annotationList->clear();
     const auto& annotations = m_canvasView->annotations();
     for (int i = 0; i < annotations.size(); ++i)
         m_annotationList->addItem(QString("[%1] %2").arg(i).arg(m_classesLoader.className(annotations[i].classId())));
+    if (selectedIdx >= 0 && selectedIdx < annotations.size())
+        m_annotationList->setCurrentRow(selectedIdx);
+    m_annotationList->blockSignals(false);
 }
 
 void MainWindow::updateClassList() {
