@@ -75,10 +75,15 @@ void CanvasView::setImage(const QString& imagePath) {
 void CanvasView::setAnnotations(const QVector<Annotation>& annotations) {
     m_annotations = annotations;
     m_selectedIndex = -1;
+    // 初始化历史
+    m_history.clear();
+    m_history.append(m_annotations);
+    m_historyIndex = 0;
     updateAnnotationItems();
 }
 
 void CanvasView::addAnnotation(const Annotation& ann) {
+    saveToHistory();
     m_annotations.append(ann);
     updateAnnotationItems();
     emit annotationsChanged();
@@ -86,6 +91,7 @@ void CanvasView::addAnnotation(const Annotation& ann) {
 
 void CanvasView::removeAnnotation(int index) {
     if (index >= 0 && index < m_annotations.size()) {
+        saveToHistory();
         m_annotations.removeAt(index);
         if (m_selectedIndex == index) {
             m_selectedIndex = -1;
@@ -99,6 +105,7 @@ void CanvasView::removeAnnotation(int index) {
 
 void CanvasView::updateAnnotation(int index, const Annotation& ann) {
     if (index >= 0 && index < m_annotations.size()) {
+        saveToHistory();
         m_annotations[index] = ann;
         updateAnnotationItems();
         emit annotationsChanged();
@@ -106,6 +113,9 @@ void CanvasView::updateAnnotation(int index, const Annotation& ann) {
 }
 
 void CanvasView::clearAnnotations() {
+    if (!m_annotations.isEmpty()) {
+        saveToHistory();
+    }
     m_annotations.clear();
     m_selectedIndex = -1;
     updateAnnotationItems();
@@ -218,12 +228,14 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                 m_dragAnnIndex = annIdx;
                 m_dragPointIndex = ptIdx;
                 m_dragStartPos = scenePos;
+                saveToHistory();  // 拖动前保存历史
             } else {
                 clearSelection();
             }
         } else if (m_mode == EditMode::DrawKeypoint) {
             // 添加关键点到选中的标注
             if (m_selectedIndex >= 0 && m_selectedIndex < m_annotations.size()) {
+                saveToHistory();  // 添加关键点前保存历史
                 Annotation& ann = m_annotations[m_selectedIndex];
                 // 转换为归一化坐标
                 double nx = scenePos.x() / m_image.width();
@@ -255,6 +267,7 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
             m_dragAnnIndex = annIdx;
             m_dragPointIndex = -1;  // 整体拖动
             m_dragStartPos = scenePos;
+            saveToHistory();  // 拖动前保存历史
         }
     }
 }
@@ -677,4 +690,39 @@ void CanvasView::setCrossHairColor(const QColor& color) {
     QPen pen(color, 1, Qt::DashLine);
     m_crossHairH->setPen(pen);
     m_crossHairV->setPen(pen);
+}
+
+void CanvasView::saveToHistory() {
+    // 删除当前位置之后的历史
+    while (m_history.size() > m_historyIndex + 1) {
+        m_history.removeLast();
+    }
+    // 添加当前状态
+    m_history.append(m_annotations);
+    m_historyIndex = m_history.size() - 1;
+    // 限制历史大小
+    while (m_history.size() > MAX_HISTORY) {
+        m_history.removeFirst();
+        m_historyIndex--;
+    }
+}
+
+void CanvasView::undo() {
+    if (m_historyIndex > 0) {
+        m_historyIndex--;
+        m_annotations = m_history[m_historyIndex];
+        m_selectedIndex = -1;
+        updateAnnotationItems();
+        emit annotationsChanged();
+    }
+}
+
+void CanvasView::redo() {
+    if (m_historyIndex < m_history.size() - 1) {
+        m_historyIndex++;
+        m_annotations = m_history[m_historyIndex];
+        m_selectedIndex = -1;
+        updateAnnotationItems();
+        emit annotationsChanged();
+    }
 }

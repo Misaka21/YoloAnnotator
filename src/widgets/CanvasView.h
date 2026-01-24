@@ -61,6 +61,12 @@ public:
     // 类别名称
     void setClassNames(const QStringList& names) { m_classNames = names; }
 
+    // 撤销/重做
+    void undo();
+    void redo();
+    bool canUndo() const { return m_historyIndex > 0; }
+    bool canRedo() const { return m_historyIndex < m_history.size() - 1; }
+
     // 坐标变换
     const CoordinateTransform& coordTransform() const { return m_transform; }
 
@@ -114,6 +120,12 @@ private:
     QVector<Annotation> m_annotations;
     QVector<QGraphicsItem*> m_annotationItems;
     int m_selectedIndex = -1;
+
+    // 撤销/重做历史
+    QVector<QVector<Annotation>> m_history;
+    int m_historyIndex = -1;
+    static const int MAX_HISTORY = 50;
+    void saveToHistory();
 
     // 绘制状态
     bool m_drawing = false;

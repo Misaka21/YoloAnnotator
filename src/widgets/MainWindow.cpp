@@ -73,6 +73,13 @@ void MainWindow::setupMenus() {
     exitAction->setShortcut(QKeySequence("Alt+F4"));
     connect(exitAction, &QAction::triggered, this, &QMainWindow::close);
     QMenu* editMenu = menuBar()->addMenu("编辑(&E)");
+    QAction* undoAction = editMenu->addAction("撤销(&U)");
+    undoAction->setShortcut(QKeySequence::Undo);
+    connect(undoAction, &QAction::triggered, m_canvasView, &CanvasView::undo);
+    QAction* redoAction = editMenu->addAction("重做(&R)");
+    redoAction->setShortcut(QKeySequence::Redo);
+    connect(redoAction, &QAction::triggered, m_canvasView, &CanvasView::redo);
+    editMenu->addSeparator();
     QAction* deleteAction = editMenu->addAction("删除标注(&D)");
     deleteAction->setShortcut(QKeySequence::Delete);
     connect(deleteAction, &QAction::triggered, this, &MainWindow::onDeleteAnnotation);
