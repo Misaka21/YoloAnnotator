@@ -85,6 +85,8 @@ private:
     bool m_autoSave = false;
     bool m_modified = false;
     bool m_classesLocked = false;  // 类别是否已锁定
+    bool m_skipSaveReminder = false;  // 不再提醒未保存
+    bool m_skipSaveAction = true;     // true=保存, false=放弃
     
     // 工具栏/菜单动作
     QAction* m_autoSaveAction = nullptr;
@@ -101,6 +103,7 @@ private:
 
     void loadImage(int index);
     void saveCurrentAnnotation();
+    bool checkUnsavedChanges();  // 检查未保存的更改，返回true表示可以继续
     void updateFileList();
     void updateAnnotationList();
     void updateClassList();

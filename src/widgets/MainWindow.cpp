@@ -13,6 +13,9 @@
 #include <QProgressDialog>
 #include <QApplication>
 #include <QColorDialog>
+#include <QDialog>
+#include <QCheckBox>
+#include <QPushButton>
 #include "inference/YoloDetector.h"
 #include "inference/ModelSettingsDialog.h"
 
@@ -274,11 +277,29 @@ void MainWindow::onSaveAnnotation() { saveCurrentAnnotation(); m_modified = fals
 
 void MainWindow::onFileSelected(QListWidgetItem* item) {
     int index = m_fileList->row(item);
-    if (index >= 0 && index != m_currentIndex) { if (m_modified && m_autoSave) saveCurrentAnnotation(); loadImage(index); }
+    if (index >= 0 && index != m_currentIndex) {
+        if (!checkUnsavedChanges()) {
+            // 用户取消，恢复列表选择
+            m_fileList->blockSignals(true);
+            m_fileList->setCurrentRow(m_currentIndex);
+            m_fileList->blockSignals(false);
+            return;
+        }
+        loadImage(index);
+    }
 }
 
-void MainWindow::onPrevImage() { if (m_currentIndex > 0) { if (m_modified && m_autoSave) saveCurrentAnnotation(); loadImage(m_currentIndex - 1); } }
-void MainWindow::onNextImage() { if (m_currentIndex < m_imageFiles.size() - 1) { if (m_modified && m_autoSave) saveCurrentAnnotation(); loadImage(m_currentIndex + 1); } }
+void MainWindow::onPrevImage() {
+    if (m_currentIndex > 0 && checkUnsavedChanges()) {
+        loadImage(m_currentIndex - 1);
+    }
+}
+
+void MainWindow::onNextImage() {
+    if (m_currentIndex < m_imageFiles.size() - 1 && checkUnsavedChanges()) {
+        loadImage(m_currentIndex + 1);
+    }
+}
 void MainWindow::onAnnotationChanged() { m_modified = true; updateAnnotationList(); updateStatusBar(); }
 void MainWindow::onAnnotationSelected(int index) { m_annotationList->blockSignals(true); m_annotationList->setCurrentRow(index); m_annotationList->blockSignals(false); }
 void MainWindow::onAnnotationDoubleClicked(int index) { Q_UNUSED(index); }
@@ -345,6 +366,7 @@ void MainWindow::saveCurrentAnnotation() {
     if (m_currentIndex < 0 || m_currentIndex >= m_imageFiles.size()) return;
     QString imagePath = m_currentFolder + "/" + m_imageFiles[m_currentIndex];
     m_annotationIO.save(getAnnotationPath(imagePath), m_canvasView->annotations());
+    m_modified = false;
     // 更新文件列表显示
     if (QListWidgetItem* item = m_fileList->item(m_currentIndex)) {
         bool hasAnnotation = !m_canvasView->annotations().isEmpty();
@@ -352,6 +374,72 @@ void MainWindow::saveCurrentAnnotation() {
         item->setText(hasAnnotation ? QString::fromUtf8("✓ ") + file : QString::fromUtf8("   ") + file);
         item->setForeground(hasAnnotation ? QColor(0, 180, 0) : palette().text().color());
     }
+}
+
+bool MainWindow::checkUnsavedChanges() {
+    if (!m_modified) return true;  // 没有修改，直接返回
+
+    if (m_autoSave) {
+        saveCurrentAnnotation();
+        return true;
+    }
+
+    // 用户选择了不再提醒
+    if (m_skipSaveReminder) {
+        if (m_skipSaveAction) {
+            saveCurrentAnnotation();
+        } else {
+            m_modified = false;
+        }
+        return true;
+    }
+
+    // 创建自定义对话框
+    QDialog dialog(this);
+    dialog.setWindowTitle("未保存的更改");
+
+    QVBoxLayout* layout = new QVBoxLayout(&dialog);
+
+    QLabel* label = new QLabel("当前图片的标注尚未保存，是否保存？");
+    layout->addWidget(label);
+
+    QCheckBox* checkBox = new QCheckBox("不再提醒，以后都执行相同操作");
+    layout->addWidget(checkBox);
+
+    QHBoxLayout* btnLayout = new QHBoxLayout();
+    QPushButton* saveBtn = new QPushButton("保存");
+    QPushButton* discardBtn = new QPushButton("放弃");
+    QPushButton* cancelBtn = new QPushButton("取消");
+    btnLayout->addStretch();
+    btnLayout->addWidget(saveBtn);
+    btnLayout->addWidget(discardBtn);
+    btnLayout->addWidget(cancelBtn);
+    layout->addLayout(btnLayout);
+
+    int result = -1;  // 0=保存, 1=放弃, -1=取消
+    connect(saveBtn, &QPushButton::clicked, [&]() { result = 0; dialog.accept(); });
+    connect(discardBtn, &QPushButton::clicked, [&]() { result = 1; dialog.accept(); });
+    connect(cancelBtn, &QPushButton::clicked, [&]() { dialog.reject(); });
+
+    saveBtn->setDefault(true);
+    dialog.exec();
+
+    if (result == 0) {
+        if (checkBox->isChecked()) {
+            m_skipSaveReminder = true;
+            m_skipSaveAction = true;
+        }
+        saveCurrentAnnotation();
+        return true;
+    } else if (result == 1) {
+        if (checkBox->isChecked()) {
+            m_skipSaveReminder = true;
+            m_skipSaveAction = false;
+        }
+        m_modified = false;
+        return true;
+    }
+    return false;  // 取消
 }
 
 void MainWindow::updateFileList() {
