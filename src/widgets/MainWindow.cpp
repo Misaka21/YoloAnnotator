@@ -426,8 +426,9 @@ bool MainWindow::checkUnsavedChanges() {
 
     if (result == 0) {
         if (checkBox->isChecked()) {
-            m_skipSaveReminder = true;
-            m_skipSaveAction = true;
+            // 相当于开启自动保存
+            m_autoSave = true;
+            m_autoSaveAction->setChecked(true);
         }
         saveCurrentAnnotation();
         return true;
