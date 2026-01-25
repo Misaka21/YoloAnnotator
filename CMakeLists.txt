@@ -10,6 +10,21 @@ set(CMAKE_AUTOUIC ON)
 # Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
+# yaml-cpp (使用 FetchContent 自动下载)
+include(FetchContent)
+FetchContent_Declare(
+    yaml-cpp
+    GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+    GIT_TAG 0.8.0
+    GIT_SHALLOW TRUE
+    EXCLUDE_FROM_ALL
+)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_INSTALL OFF CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(yaml-cpp)
+
 # OpenCV
 # 可通过 -DOpenCV_DIR=xxx 指定路径，或让CMake自动查找
 if(NOT DEFINED OpenCV_DIR AND WIN32)
@@ -98,12 +113,14 @@ set(CORE_SOURCES
 set(IO_SOURCES
     src/io/AnnotationIO.cpp
     src/io/ClassesLoader.cpp
+    src/io/DatasetConfig.cpp
 )
 
 set(WIDGET_SOURCES
     src/widgets/MainWindow.cpp
     src/widgets/CanvasView.cpp
     src/widgets/AnnotationItem.cpp
+    src/widgets/NewProjectDialog.cpp
 )
 
 set(INFERENCE_SOURCES
@@ -132,6 +149,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
     Qt6::Gui
     Qt6::Widgets
     ${OpenCV_LIBS}
+    yaml-cpp::yaml-cpp
 )
 
 # 添加后端支持的编译宏

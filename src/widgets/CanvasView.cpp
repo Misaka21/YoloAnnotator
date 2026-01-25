@@ -229,6 +229,30 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
             if (m_selectedIndex >= 0 && m_selectedIndex < m_annotations.size()) {
                 int ptIdx = findPointAt(m_selectedIndex, scenePos);
                 if (ptIdx >= 0) {
+                    // 检查是否点击在关键点上 (ptIdx >= 4 表示关键点)
+                    if (ptIdx >= 4) {
+                        int kpIdx = ptIdx - 4;
+                        Annotation& ann = m_annotations[m_selectedIndex];
+
+                        // Shift+点击：删除关键点
+                        if (event->modifiers() & Qt::ShiftModifier) {
+                            saveToHistory();
+                            ann.keypoints()[kpIdx].setValid(false);
+                            updateAnnotationItems();
+                            emit annotationsChanged();
+                            return;
+                        }
+
+                        // Ctrl+点击：循环可见性 (0->1->2->0)
+                        if (event->modifiers() & Qt::ControlModifier) {
+                            saveToHistory();
+                            ann.keypoints()[kpIdx].cycleVisibility();
+                            updateAnnotationItems();
+                            emit annotationsChanged();
+                            return;
+                        }
+                    }
+
                     // 点击在当前选中框的控制点上，开始拖动
                     m_dragging = true;
                     m_dragAnnIndex = m_selectedIndex;
@@ -545,34 +569,106 @@ void CanvasView::updateAnnotationItems() {
             }
         }
 
-        // 绘制关键点
+        // 检查是否有任何有效的关键点
+        bool hasValidKeypoints = false;
         for (int k = 0; k < ann.keypointCount(); ++k) {
-            const Keypoint& kp = ann.keypoints()[k];
-            if (kp.isValid()) {
-                double kx = kp.x() * imgW;
-                double ky = kp.y() * imgH;
-                QColor kpColor = m_skeleton.keypointColor(k);
-                auto* kpItem = m_scene->addEllipse(
-                    kx - 5, ky - 5, 10, 10,
-                    QPen(kpColor.darker()), QBrush(kpColor));
-                kpItem->setZValue(3);
-                m_annotationItems.append(kpItem);
+            if (ann.keypoints()[k].isValid()) {
+                hasValidKeypoints = true;
+                break;
             }
         }
 
-        // 绘制骨架连线
-        for (const auto& bone : m_skeleton.bones()) {
-            if (bone.from < ann.keypointCount() && bone.to < ann.keypointCount()) {
-                const Keypoint& kp1 = ann.keypoints()[bone.from];
-                const Keypoint& kp2 = ann.keypoints()[bone.to];
-                if (kp1.isValid() && kp2.isValid()) {
-                    double x1 = kp1.x() * imgW;
-                    double y1 = kp1.y() * imgH;
-                    double x2 = kp2.x() * imgW;
-                    double y2 = kp2.y() * imgH;
-                    auto* lineItem = m_scene->addLine(x1, y1, x2, y2, QPen(bone.color, 2));
-                    lineItem->setZValue(2);
-                    m_annotationItems.append(lineItem);
+        // 只有当标注有有效关键点时才绘制关键点和骨架
+        if (hasValidKeypoints) {
+            double viewScale = transform().m11();
+
+            // 绘制关键点 - 使用精确的十字标记（类似标定板角点）
+            for (int k = 0; k < ann.keypointCount(); ++k) {
+                const Keypoint& kp = ann.keypoints()[k];
+                if (kp.isValid()) {
+                    double kx = kp.x() * imgW;
+                    double ky = kp.y() * imgH;
+                    QColor kpColor = m_skeleton.keypointColor(k);
+
+                    // 根据可见性设置透明度
+                    int alpha = (kp.visibility() == 0) ? 80 :
+                                (kp.visibility() == 1) ? 160 : 255;
+                    kpColor.setAlpha(alpha);
+
+                    // 十字标记尺寸（屏幕像素，不随缩放变化）
+                    double crossSize = 12.0 / viewScale;  // 十字臂长度
+                    double penWidth = 2.0 / viewScale;    // 线宽
+                    double dotRadius = 3.0 / viewScale;   // 中心点半径
+
+                    // 外层十字（深色轮廓，增加对比度）
+                    QColor outlineColor = Qt::black;
+                    outlineColor.setAlpha(alpha);
+                    double outlineWidth = (penWidth + 1.0 / viewScale);
+
+                    // 水平线（外轮廓）
+                    auto* hLineOut = m_scene->addLine(
+                        kx - crossSize, ky, kx + crossSize, ky,
+                        QPen(outlineColor, outlineWidth));
+                    hLineOut->setZValue(3);
+                    m_annotationItems.append(hLineOut);
+
+                    // 垂直线（外轮廓）
+                    auto* vLineOut = m_scene->addLine(
+                        kx, ky - crossSize, kx, ky + crossSize,
+                        QPen(outlineColor, outlineWidth));
+                    vLineOut->setZValue(3);
+                    m_annotationItems.append(vLineOut);
+
+                    // 水平线（内层彩色）
+                    auto* hLine = m_scene->addLine(
+                        kx - crossSize, ky, kx + crossSize, ky,
+                        QPen(kpColor, penWidth));
+                    hLine->setZValue(4);
+                    m_annotationItems.append(hLine);
+
+                    // 垂直线（内层彩色）
+                    auto* vLine = m_scene->addLine(
+                        kx, ky - crossSize, kx, ky + crossSize,
+                        QPen(kpColor, penWidth));
+                    vLine->setZValue(4);
+                    m_annotationItems.append(vLine);
+
+                    // 中心小圆点（精确定位点）
+                    auto* centerDot = m_scene->addEllipse(
+                        kx - dotRadius, ky - dotRadius,
+                        dotRadius * 2, dotRadius * 2,
+                        QPen(outlineColor, 1.0 / viewScale),
+                        QBrush(kpColor));
+                    centerDot->setZValue(5);
+
+                    // 添加 tooltip
+                    QString visText = (kp.visibility() == 0) ? "不可见" :
+                                      (kp.visibility() == 1) ? "遮挡" : "可见";
+                    QString kpName = m_skeleton.keypointName(k);
+                    if (kpName.isEmpty()) {
+                        kpName = QString("关键点 %1").arg(k);
+                    }
+                    QString tooltip = QString("%1 [%2]\nShift+点击删除\nCtrl+点击切换可见性").arg(kpName).arg(visText);
+                    centerDot->setToolTip(tooltip);
+
+                    m_annotationItems.append(centerDot);
+                }
+            }
+
+            // 绘制骨架连线
+            for (const auto& bone : m_skeleton.bones()) {
+                if (bone.from < ann.keypointCount() && bone.to < ann.keypointCount()) {
+                    const Keypoint& kp1 = ann.keypoints()[bone.from];
+                    const Keypoint& kp2 = ann.keypoints()[bone.to];
+                    if (kp1.isValid() && kp2.isValid()) {
+                        double x1 = kp1.x() * imgW;
+                        double y1 = kp1.y() * imgH;
+                        double x2 = kp2.x() * imgW;
+                        double y2 = kp2.y() * imgH;
+                        auto* lineItem = m_scene->addLine(x1, y1, x2, y2, QPen(bone.color, 2));
+                        lineItem->setZValue(2);
+                        m_annotationItems.append(lineItem);
+                    }
                 }
             }
         }

@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "NewProjectDialog.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -7,6 +8,7 @@
 #include <QGroupBox>
 #include <QDir>
 #include <QFile>
+#include <QTextStream>
 #include <QShortcut>
 #include <QInputDialog>
 #include <QActionGroup>
@@ -62,6 +64,17 @@ void MainWindow::setupUI() {
 
 void MainWindow::setupMenus() {
     QMenu* fileMenu = menuBar()->addMenu("文件(&F)");
+
+    // 项目操作
+    QAction* openProjectAction = fileMenu->addAction("打开项目(&P)...");
+    openProjectAction->setShortcut(QKeySequence("Ctrl+Shift+O"));
+    connect(openProjectAction, &QAction::triggered, this, &MainWindow::onOpenProject);
+
+    QAction* createProjectAction = fileMenu->addAction("从 classes.txt 创建项目...");
+    connect(createProjectAction, &QAction::triggered, this, &MainWindow::onCreateProjectFromTxt);
+
+    fileMenu->addSeparator();
+
     QAction* openFolderAction = fileMenu->addAction("打开文件夹(&O)...");
     openFolderAction->setShortcut(QKeySequence("Ctrl+O"));
     connect(openFolderAction, &QAction::triggered, this, &MainWindow::onOpenFolder);
@@ -203,8 +216,28 @@ void MainWindow::onOpenFolder() {
     QString dir = QFileDialog::getExistingDirectory(this, "选择图片文件夹", m_currentFolder);
     if (dir.isEmpty()) return;
     if (m_modified && m_autoSave) saveCurrentAnnotation();
+
+    // 优先检测 YAML 项目文件
+    QString yamlPath = findYamlInFolder(dir);
+    if (!yamlPath.isEmpty()) {
+        int ret = QMessageBox::question(this, "发现项目文件",
+            QString("找到项目文件:\n%1\n\n是否作为项目打开?").arg(yamlPath),
+            QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
+
+        if (ret == QMessageBox::Cancel) return;
+        if (ret == QMessageBox::Yes) {
+            DatasetConfig config;
+            if (config.loadYAML(yamlPath)) {
+                loadProject(config);
+                return;
+            }
+        }
+    }
+
+    // 传统方式打开文件夹
     m_currentFolder = dir; m_imageFiles.clear(); m_classesLocked = false;
     m_classesLoader.clear();  // 清除旧的类别数据
+    m_datasetConfig.clear();  // 清除项目配置
     QDir directory(dir);
     QStringList filters = {"*.jpg", "*.jpeg", "*.png", "*.bmp"};
     m_imageFiles = directory.entryList(filters, QDir::Files, QDir::Name);
@@ -712,4 +745,212 @@ void MainWindow::onAutoAnnotateUnannotated() {
 
     QMessageBox::information(this, "完成",
         QString("标注完成!\n共处理 %1 张图片\n检测到 %2 个目标").arg(unannotated.size()).arg(totalDetections));
+}
+
+// ==================== 项目操作 ====================
+
+void MainWindow::onOpenProject() {
+    QString path = QFileDialog::getOpenFileName(this, "打开项目文件",
+        m_currentFolder.isEmpty() ? QString() : m_currentFolder,
+        "YAML 项目文件 (*.yaml *.yml);;所有文件 (*)");
+
+    if (path.isEmpty()) return;
+
+    if (m_modified && m_autoSave) saveCurrentAnnotation();
+
+    DatasetConfig config;
+    if (!config.loadYAML(path)) {
+        QMessageBox::warning(this, "错误", "无法解析项目文件:\n" + path);
+        return;
+    }
+
+    loadProject(config);
+}
+
+void MainWindow::onCreateProjectFromTxt() {
+    QString txtPath = QFileDialog::getOpenFileName(this, "选择 classes.txt 文件",
+        m_currentFolder.isEmpty() ? QString() : m_currentFolder,
+        "类别文件 (*.txt);;所有文件 (*)");
+
+    if (txtPath.isEmpty()) return;
+
+    // 加载类别
+    QStringList classNames;
+    QFile file(txtPath);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QTextStream in(&file);
+        while (!in.atEnd()) {
+            QString line = in.readLine().trimmed();
+            if (!line.isEmpty()) {
+                classNames.append(line);
+            }
+        }
+    }
+
+    if (classNames.isEmpty()) {
+        QMessageBox::warning(this, "错误", "classes.txt 文件为空或无法读取");
+        return;
+    }
+
+    // 显示新建项目对话框
+    NewProjectDialog dialog(this);
+    dialog.setClassNames(classNames);
+    if (dialog.exec() != QDialog::Accepted) {
+        return;
+    }
+
+    DatasetConfig config = dialog.config();
+    QString savePath = dialog.projectSavePath();
+
+    // 保存 YAML 文件
+    if (!config.saveYAML(savePath)) {
+        QMessageBox::warning(this, "错误", "无法保存项目文件:\n" + savePath);
+        return;
+    }
+
+    // 加载项目
+    config.loadYAML(savePath);  // 重新加载以获取正确的路径
+    loadProject(config);
+
+    QMessageBox::information(this, "成功", "项目已创建:\n" + savePath);
+}
+
+void MainWindow::loadProject(const DatasetConfig& config) {
+    m_datasetConfig = config;
+    m_classesLoader.setClassNames(config.classNames());
+    m_classesLocked = true;
+
+    // 设置任务类型和骨架配置
+    if (config.isPose()) {
+        m_formatCombo->setCurrentIndex(1);
+        m_canvasView->setSkeletonConfig(config.skeletonConfig());
+        m_annotationIO.setFormat(AnnotationIO::Pose);
+        m_annotationIO.setKeypointCount(config.keypointCount());
+    } else {
+        m_formatCombo->setCurrentIndex(0);
+        m_annotationIO.setFormat(AnnotationIO::Detection);
+    }
+
+    // 加载图片
+    QString imagePath;
+    if (!config.resolvedTrainPath().isEmpty() && QDir(config.resolvedTrainPath()).exists()) {
+        imagePath = config.resolvedTrainPath();
+    } else if (!config.resolvedValPath().isEmpty() && QDir(config.resolvedValPath()).exists()) {
+        imagePath = config.resolvedValPath();
+    } else if (!config.datasetPath().isEmpty() && QDir(config.datasetPath()).exists()) {
+        imagePath = config.datasetPath();
+    }
+
+    if (imagePath.isEmpty()) {
+        // 询问用户选择图片文件夹
+        imagePath = QFileDialog::getExistingDirectory(this, "选择图片文件夹",
+            QFileInfo(config.projectPath()).absolutePath());
+    }
+
+    if (!imagePath.isEmpty()) {
+        loadImagesFromPath(imagePath);
+    }
+
+    updateClassList();
+    setWindowTitle(QString("YOLO 标注工具 - %1").arg(
+        config.projectPath().isEmpty() ? m_currentFolder : QFileInfo(config.projectPath()).fileName()));
+}
+
+void MainWindow::loadImagesFromPath(const QString& imagePath) {
+    m_currentFolder = imagePath;
+    m_imageFiles.clear();
+
+    QDir directory(imagePath);
+    QStringList filters = {"*.jpg", "*.jpeg", "*.png", "*.bmp"};
+    m_imageFiles = directory.entryList(filters, QDir::Files, QDir::Name);
+
+    if (m_imageFiles.isEmpty()) {
+        QMessageBox::warning(this, "警告", "所选文件夹中没有图片文件!");
+        return;
+    }
+
+    // 设置标签文件夹
+    QString labelsDir;
+    if (imagePath.contains("/images") || imagePath.contains("\\images")) {
+        QString possibleLabels = imagePath;
+        possibleLabels.replace("/images", "/labels");
+        possibleLabels.replace("\\images", "\\labels");
+        if (QDir(possibleLabels).exists()) {
+            labelsDir = possibleLabels;
+        }
+    }
+
+    if (labelsDir.isEmpty()) {
+        // 检查同级 labels 目录
+        QDir parent(imagePath);
+        parent.cdUp();
+        QString siblingLabels = parent.absolutePath() + "/labels";
+        if (QDir(siblingLabels).exists()) {
+            labelsDir = siblingLabels;
+        }
+    }
+
+    if (labelsDir.isEmpty()) {
+        // 检查是否已有标注文件
+        bool hasTxt = false;
+        for (const QString& img : m_imageFiles) {
+            if (QFile::exists(imagePath + "/" + QFileInfo(img).completeBaseName() + ".txt")) {
+                hasTxt = true;
+                break;
+            }
+        }
+        if (hasTxt) {
+            labelsDir = imagePath;
+        }
+    }
+
+    if (labelsDir.isEmpty()) {
+        // 创建 labels 目录
+        QDir parent(imagePath);
+        parent.cdUp();
+        labelsDir = parent.absolutePath() + "/labels";
+        QDir().mkpath(labelsDir);
+    }
+
+    m_labelsFolder = labelsDir;
+
+    updateFileList();
+    if (!m_imageFiles.isEmpty()) {
+        loadImage(0);
+    }
+}
+
+QString MainWindow::findYamlInFolder(const QString& folder) {
+    QDir dir(folder);
+    QStringList yamls = dir.entryList({"*.yaml", "*.yml"}, QDir::Files);
+    if (!yamls.isEmpty()) {
+        return dir.absoluteFilePath(yamls.first());
+    }
+
+    // 检查上级目录
+    QDir parent(folder);
+    parent.cdUp();
+    yamls = parent.entryList({"*.yaml", "*.yml"}, QDir::Files);
+    if (!yamls.isEmpty()) {
+        return parent.absoluteFilePath(yamls.first());
+    }
+
+    return QString();
+}
+
+QString MainWindow::findClassesTxtInFolder(const QString& folder) {
+    QString classesPath = folder + "/classes.txt";
+    if (QFile::exists(classesPath)) {
+        return classesPath;
+    }
+
+    // 检查上级目录
+    QDir parent(folder);
+    parent.cdUp();
+    classesPath = parent.absolutePath() + "/classes.txt";
+    if (QFile::exists(classesPath)) {
+        return classesPath;
+    }
+
+    return QString();
 }

@@ -187,7 +187,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-4.10.0-cuda124-windows-v1
+          key: opencv-4.10.0-cuda124-windows-v2
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -206,6 +206,7 @@ jobs:
             -DBUILD_TESTS=OFF `
             -DBUILD_PERF_TESTS=OFF `
             -DBUILD_EXAMPLES=OFF `
+            -DBUILD_opencv_apps=OFF `
             -DBUILD_opencv_python3=OFF `
             -DWITH_CUDA=ON `
             -DWITH_CUDNN=ON `
@@ -460,7 +461,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-4.10.0-cuda124-linux-v1
+          key: opencv-4.10.0-cuda124-linux-v2
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -479,6 +480,7 @@ jobs:
             -DBUILD_TESTS=OFF \
             -DBUILD_PERF_TESTS=OFF \
             -DBUILD_EXAMPLES=OFF \
+            -DBUILD_opencv_apps=OFF \
             -DBUILD_opencv_python3=OFF \
             -DWITH_CUDA=ON \
             -DWITH_CUDNN=ON \

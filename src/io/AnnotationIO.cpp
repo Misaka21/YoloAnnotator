@@ -45,22 +45,29 @@ Annotation AnnotationIO::parseLine(const QString& line) {
     );
     ann.setBoundingBox(bbox);
 
-    // Pose格式: 解析关键点
-    if (m_format == Pose && m_keypointCount > 0) {
-        ann.setKeypointCount(m_keypointCount);
+    // 自动检测该行的关键点数量
+    int extraValues = parts.size() - 5;
+    int lineKpCount = (extraValues >= 3 && extraValues % 3 == 0) ? extraValues / 3 : 0;
+
+    // 解析关键点（按该行实际数量）
+    if (lineKpCount > 0) {
+        ann.setKeypointCount(lineKpCount);
         int kpStartIdx = 5;
 
-        for (int i = 0; i < m_keypointCount; ++i) {
+        for (int i = 0; i < lineKpCount; ++i) {
             int idx = kpStartIdx + i * 3;
-            if (idx + 2 < parts.size()) {
-                Keypoint kp(
-                    parts[idx].toDouble(),      // x
-                    parts[idx + 1].toDouble(),  // y
-                    parts[idx + 2].toInt()      // visibility
-                );
-                kp.setValid(true);
-                ann.setKeypoint(i, kp);
-            }
+            double kpX = parts[idx].toDouble();
+            double kpY = parts[idx + 1].toDouble();
+            int kpVis = parts[idx + 2].toInt();
+
+            Keypoint kp(kpX, kpY, kpVis);
+
+            // 只有坐标非零或可见性非零时才标记为有效
+            // (0, 0, 0) 视为无效占位符
+            bool isValidKp = (kpX != 0.0 || kpY != 0.0 || kpVis != 0);
+            kp.setValid(isValidKp);
+
+            ann.setKeypoint(i, kp);
         }
     }
 
@@ -101,12 +108,14 @@ QString AnnotationIO::formatLine(const Annotation& ann) {
         << bbox.width() << " "
         << bbox.height();
 
-    // Pose格式: 输出关键点
-    if (m_format == Pose && ann.hasPose()) {
+    // 只输出有效的关键点
+    if (ann.hasPose()) {
         for (const Keypoint& kp : ann.keypoints()) {
-            out << " " << kp.x()
-                << " " << kp.y()
-                << " " << kp.visibility();
+            if (kp.isValid()) {
+                out << " " << kp.x()
+                    << " " << kp.y()
+                    << " " << kp.visibility();
+            }
         }
     }
 
@@ -120,6 +129,8 @@ AnnotationIO::Format AnnotationIO::detectFormat(const QString& txtPath, int& out
         return Detection;
     }
 
+    // 扫描所有行，找最大关键点数
+    int maxKp = 0;
     QTextStream in(&file);
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
@@ -127,18 +138,16 @@ AnnotationIO::Format AnnotationIO::detectFormat(const QString& txtPath, int& out
 
         QStringList parts = line.split(' ', Qt::SkipEmptyParts);
         if (parts.size() > 5) {
-            // 超过5个值，可能是Pose格式
             int extraValues = parts.size() - 5;
             if (extraValues % 3 == 0) {
-                outKeypointCount = extraValues / 3;
-                return Pose;
+                int kp = extraValues / 3;
+                if (kp > maxKp) maxKp = kp;
             }
         }
-        break;  // 只检查第一行
     }
 
-    outKeypointCount = 0;
-    return Detection;
+    outKeypointCount = maxKp;
+    return (maxKp > 0) ? Pose : Detection;
 }
 
 QString AnnotationIO::getAnnotationPath(const QString& imagePath) {

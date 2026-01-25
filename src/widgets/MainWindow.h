@@ -10,6 +10,7 @@
 #include "CanvasView.h"
 #include "io/ClassesLoader.h"
 #include "io/AnnotationIO.h"
+#include "io/DatasetConfig.h"
 
 class YoloDetector;
 
@@ -23,7 +24,9 @@ public:
     ~MainWindow();
 
 private slots:
-    // 文件操作
+    // 文件/项目操作
+    void onOpenProject();
+    void onCreateProjectFromTxt();
     void onOpenFolder();
     void onOpenImage();
     void onImportClasses();
@@ -82,6 +85,7 @@ private:
     int m_currentIndex = -1;
     ClassesLoader m_classesLoader;
     AnnotationIO m_annotationIO;
+    DatasetConfig m_datasetConfig;  // 项目配置
     bool m_autoSave = false;
     bool m_modified = false;
     bool m_classesLocked = false;  // 类别是否已锁定
@@ -109,4 +113,10 @@ private:
     void updateClassList();
     void updateStatusBar();
     QString getAnnotationPath(const QString& imagePath);  // 获取标注文件路径
+
+    // 项目加载辅助
+    void loadProject(const DatasetConfig& config);
+    void loadImagesFromPath(const QString& imagePath);
+    QString findYamlInFolder(const QString& folder);
+    QString findClassesTxtInFolder(const QString& folder);
 };
