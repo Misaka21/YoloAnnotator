@@ -174,8 +174,8 @@ jobs:
           curl -L -o miniconda.exe https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe
           Start-Process -Wait -FilePath .\miniconda.exe -ArgumentList '/S', '/D=C:\Miniconda3'
 
-          # 用 conda 安装 cuDNN (版本对应 CUDA 12.x)
-          C:\Miniconda3\Scripts\conda.exe install -y -c conda-forge cudnn=9.0
+          # 用 conda 安装 cuDNN (从 nvidia 频道获取 CUDA 12.x 兼容版本)
+          C:\Miniconda3\Scripts\conda.exe install -y -c nvidia cudnn
 
           # 复制到 CUDA 目录
           cp C:\Miniconda3\Library\bin\cudnn*.dll "$env:CUDA_PATH\bin\" -Force
