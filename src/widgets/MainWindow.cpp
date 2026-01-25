@@ -400,18 +400,25 @@ void MainWindow::updateStatusBar() {
     m_statusLabel->setText(status);
 }
 
-void MainWindow::onClassSelectRequested(int annotationIndex) {
+void MainWindow::onClassSelectRequested(int annotationIndex, QPoint globalPos) {
     if (m_classesLoader.classCount() == 0) return;
-    QStringList items;
-    for (int i = 0; i < m_classesLoader.classCount(); ++i) items << QString("[%1] %2").arg(i).arg(m_classesLoader.className(i));
-    bool ok;
-    QString selected = QInputDialog::getItem(this, "选择类别", "请选择标注类别:", items, m_canvasView->currentClass(), false, &ok);
-    if (ok && !selected.isEmpty()) {
-        int classId = items.indexOf(selected);
-        if (classId >= 0 && annotationIndex >= 0 && annotationIndex < m_canvasView->annotations().size()) {
+
+    // 使用 QMenu 在鼠标位置显示类别选择
+    QMenu menu;
+    for (int i = 0; i < m_classesLoader.classCount(); ++i) {
+        QAction* action = menu.addAction(QString("[%1] %2").arg(i).arg(m_classesLoader.className(i)));
+        action->setData(i);
+    }
+
+    QAction* selected = menu.exec(globalPos);
+    if (selected) {
+        int classId = selected->data().toInt();
+        if (annotationIndex >= 0 && annotationIndex < m_canvasView->annotations().size()) {
             Annotation ann = m_canvasView->annotations()[annotationIndex];
-            ann.setClassId(classId); m_canvasView->updateAnnotation(annotationIndex, ann);
-            m_canvasView->setCurrentClass(classId); m_classList->setCurrentRow(classId);
+            ann.setClassId(classId);
+            m_canvasView->updateAnnotation(annotationIndex, ann);
+            m_canvasView->setCurrentClass(classId);
+            m_classList->setCurrentRow(classId);
         }
     } else {
         // 用户取消，删除刚创建的标注

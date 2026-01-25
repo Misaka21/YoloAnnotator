@@ -89,7 +89,7 @@ signals:
     void annotationDoubleClicked(int index);
     void zoomChanged(double scale);
     void mouseMoved(const QPointF& imagePos);
-    void classSelectRequested(int annotationIndex);  // 请求选择类别
+    void classSelectRequested(int annotationIndex, QPoint globalPos);  // 请求选择类别
     void contextMenuRequested(int annotationIndex, const QPoint& globalPos);  // 右键菜单
 
 protected:

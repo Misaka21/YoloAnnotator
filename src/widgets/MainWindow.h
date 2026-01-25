@@ -50,7 +50,7 @@ private slots:
     void onEditSkeletonConfig();
     
     // 类别选择
-    void onClassSelectRequested(int annotationIndex);
+    void onClassSelectRequested(int annotationIndex, QPoint globalPos);
     void onClassListDoubleClicked(QListWidgetItem* item);
     void onContextMenuRequested(int annotationIndex, const QPoint& globalPos);
 

@@ -5,6 +5,7 @@
 #include <QKeyEvent>
 #include <QScrollBar>
 #include <QContextMenuEvent>
+#include <QTextDocument>
 #include <cmath>
 
 CanvasView::CanvasView(QWidget* parent)
@@ -157,22 +158,26 @@ void CanvasView::setSkeletonConfig(const SkeletonConfig& config) {
 void CanvasView::zoomIn() {
     scale(1.2, 1.2);
     emit zoomChanged(transform().m11());
+    updateAnnotationItems();
 }
 
 void CanvasView::zoomOut() {
     scale(1.0 / 1.2, 1.0 / 1.2);
     emit zoomChanged(transform().m11());
+    updateAnnotationItems();
 }
 
 void CanvasView::zoomFit() {
     if (m_image.isNull()) return;
     fitInView(m_scene->sceneRect(), Qt::KeepAspectRatio);
     emit zoomChanged(transform().m11());
+    updateAnnotationItems();
 }
 
 void CanvasView::zoomOriginal() {
     resetTransform();
     emit zoomChanged(1.0);
+    updateAnnotationItems();
 }
 
 void CanvasView::wheelEvent(QWheelEvent* event) {
@@ -204,6 +209,7 @@ void CanvasView::wheelEvent(QWheelEvent* event) {
     verticalScrollBar()->setValue(verticalScrollBar()->value() + int(delta.y()));
 
     emit zoomChanged(transform().m11());
+    updateAnnotationItems();
     event->accept();
 }
 
@@ -219,16 +225,30 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                                           QPen(Qt::green, 2), QBrush(QColor(0, 255, 0, 50)));
             m_tempRect->setZValue(100);
         } else if (m_mode == EditMode::Select) {
-            // 尝试选择标注或拖动点
+            // 优先检查当前选中标注的角点/关键点
+            if (m_selectedIndex >= 0 && m_selectedIndex < m_annotations.size()) {
+                int ptIdx = findPointAt(m_selectedIndex, scenePos);
+                if (ptIdx >= 0) {
+                    // 点击在当前选中框的控制点上，开始拖动
+                    m_dragging = true;
+                    m_dragAnnIndex = m_selectedIndex;
+                    m_dragPointIndex = ptIdx;
+                    m_dragStartPos = scenePos;
+                    saveToHistory();
+                    return;
+                }
+            }
+
+            // 否则尝试选择其他标注
             int annIdx = findAnnotationAt(scenePos);
             if (annIdx >= 0) {
                 setSelectedAnnotation(annIdx);
                 int ptIdx = findPointAt(annIdx, scenePos);
                 m_dragging = true;
                 m_dragAnnIndex = annIdx;
-                m_dragPointIndex = ptIdx;
+                m_dragPointIndex = ptIdx;  // -1 表示整体拖动
                 m_dragStartPos = scenePos;
-                saveToHistory();  // 拖动前保存历史
+                saveToHistory();
             } else {
                 clearSelection();
             }
@@ -469,7 +489,8 @@ void CanvasView::updateAnnotationItems() {
                 color = Qt::green;  // 默认绿色
             }
         }
-        int penWidth = (i == m_selectedIndex) ? 3 : 2;
+        double scale = transform().m11();
+        double penWidth = ((i == m_selectedIndex) ? 3.0 : 2.0) / scale;  // 固定屏幕宽度
         QColor fillColor = color;
         fillColor.setAlpha(40);  // 淡淡的填充
 
@@ -478,21 +499,47 @@ void CanvasView::updateAnnotationItems() {
         m_annotationItems.append(rectItem);
 
         // 添加标签文字
-        auto* textItem = m_scene->addText(QString("[%1] %2").arg(i).arg(className));
-        textItem->setPos(x, y - 20);
+        QString labelText = QString("[%1] %2").arg(i).arg(className);
+
+        // 字体设置
+        QFont labelFont("Segoe UI", 9);
+        labelFont.setWeight(QFont::DemiBold);
+        labelFont.setStyleStrategy(QFont::PreferAntialias);
+
+        // 先创建文字获取尺寸
+        auto* textItem = m_scene->addText(labelText, labelFont);
+        textItem->document()->setDocumentMargin(0);  // 去掉内边距
+        QRectF textRect = textItem->boundingRect();
+        double labelX = x;
+        double labelY = y - textRect.height();
+
+        // 阴影文字
+        auto* shadowItem = m_scene->addText(labelText, labelFont);
+        shadowItem->document()->setDocumentMargin(0);
+        shadowItem->setPos(labelX + 1, labelY + 1);
+        shadowItem->setDefaultTextColor(QColor(0, 0, 0, 200));
+        shadowItem->setZValue(2);
+        m_annotationItems.append(shadowItem);
+
+        // 主文字
+        textItem->setPos(labelX, labelY);
         textItem->setDefaultTextColor(Qt::white);
-        textItem->setZValue(2);
+        textItem->setZValue(3);
         m_annotationItems.append(textItem);
 
-        // 如果选中，绘制角点
+        // 如果选中，绘制角点 (固定屏幕大小，不随缩放变化)
         if (i == m_selectedIndex) {
+            double scale = transform().m11();
+            double cornerRadius = 8.0 / scale;  // 屏幕上固定8像素半径
+
             QPointF corners[4] = {
                 {x, y}, {x + w, y}, {x + w, y + h}, {x, y + h}
             };
             for (int j = 0; j < 4; ++j) {
                 auto* corner = m_scene->addEllipse(
-                    corners[j].x() - 5, corners[j].y() - 5, 10, 10,
-                    QPen(Qt::green), QBrush(Qt::green));
+                    corners[j].x() - cornerRadius, corners[j].y() - cornerRadius,
+                    cornerRadius * 2, cornerRadius * 2,
+                    QPen(color), QBrush(color));
                 corner->setZValue(3);
                 m_annotationItems.append(corner);
             }
@@ -574,9 +621,9 @@ void CanvasView::finishDrawBBox(const QPointF& end) {
     addAnnotation(ann);
     int newIndex = m_annotations.size() - 1;
     setSelectedAnnotation(newIndex);
-    
-    // 请求选择类别
-    emit classSelectRequested(newIndex);
+
+    // 请求选择类别，传递当前鼠标位置
+    emit classSelectRequested(newIndex, QCursor::pos());
 }
 
 int CanvasView::findAnnotationAt(const QPointF& scenePos) {
@@ -607,9 +654,9 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
     double imgW = m_image.width();
     double imgH = m_image.height();
 
-    // 在场景像素坐标中计算，阈值考虑缩放
-    double currentScale = transform().m11();
-    double threshold = 10.0 / currentScale;  // 屏幕10像素的检测范围
+    // 在场景像素坐标中计算 (固定屏幕大小)
+    double scale = transform().m11();
+    double threshold = 8.0 / scale;  // 屏幕上固定8像素，与角点视觉一致
 
     // 检查边界框角点（转换为场景像素坐标）
     const BoundingBox& bbox = ann.boundingBox();
@@ -648,6 +695,7 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
 void CanvasView::applyZoom(double factor, const QPointF& center) {
     scale(factor, factor);
     emit zoomChanged(transform().m11());
+    updateAnnotationItems();
 }
 
 void CanvasView::updateCrossHair(const QPointF& scenePos) {
