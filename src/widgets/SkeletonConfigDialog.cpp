@@ -5,16 +5,46 @@
 #include <QLabel>
 #include <QHeaderView>
 #include <QColorDialog>
-#include <QGraphicsEllipseItem>
+#include <QFileDialog>
+#include <QMessageBox>
 #include <QGraphicsLineItem>
+#include <QGraphicsTextItem>
+#include <QGraphicsSceneMouseEvent>
 #include <QDialogButtonBox>
-#include <QSpinBox>
+#include <cmath>
 
+// DraggablePoint 实现
+DraggablePoint::DraggablePoint(int index, SkeletonConfigDialog* dialog, qreal x, qreal y, qreal w, qreal h)
+    : QGraphicsEllipseItem(x, y, w, h)
+    , m_index(index)
+    , m_dialog(dialog)
+{
+    setFlag(QGraphicsItem::ItemIsMovable);
+    setFlag(QGraphicsItem::ItemSendsGeometryChanges);
+    setCursor(Qt::SizeAllCursor);
+}
+
+void DraggablePoint::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
+{
+    QGraphicsEllipseItem::mouseMoveEvent(event);
+    // 通知对话框更新连线
+    QPointF center = pos() + rect().center();
+    m_dialog->onPointMoved(m_index, center);
+}
+
+void DraggablePoint::mouseReleaseEvent(QGraphicsSceneMouseEvent* event)
+{
+    QGraphicsEllipseItem::mouseReleaseEvent(event);
+    QPointF center = pos() + rect().center();
+    m_dialog->onPointMoved(m_index, center);
+}
+
+// SkeletonConfigDialog 实现
 SkeletonConfigDialog::SkeletonConfigDialog(QWidget* parent)
     : QDialog(parent)
 {
     setWindowTitle("骨架配置");
-    setMinimumSize(700, 550);
+    setMinimumSize(750, 600);
     setupUI();
     updatePreview();
 }
@@ -30,9 +60,11 @@ void SkeletonConfigDialog::setupUI()
     m_presetCombo->addItem("自定义");
     m_presetCombo->addItem("COCO 17 关键点");
     m_loadPresetBtn = new QPushButton("加载");
+    m_saveYamlBtn = new QPushButton("保存到 YAML...");
     presetLayout->addWidget(m_presetCombo);
     presetLayout->addWidget(m_loadPresetBtn);
     presetLayout->addStretch();
+    presetLayout->addWidget(m_saveYamlBtn);
     mainLayout->addWidget(presetGroup);
 
     // 主编辑区域
@@ -89,13 +121,14 @@ void SkeletonConfigDialog::setupUI()
     editLayout->addLayout(leftLayout);
 
     // 右侧：预览面板
-    QGroupBox* previewGroup = new QGroupBox("预览");
+    QGroupBox* previewGroup = new QGroupBox("预览 (可拖动关键点)");
     QVBoxLayout* previewLayout = new QVBoxLayout(previewGroup);
     m_previewScene = new QGraphicsScene(this);
     m_previewView = new QGraphicsView(m_previewScene);
-    m_previewView->setMinimumSize(250, 300);
+    m_previewView->setMinimumSize(280, 350);
     m_previewView->setRenderHint(QPainter::Antialiasing);
     m_previewView->setBackgroundBrush(QColor(50, 50, 50));
+    m_previewView->setDragMode(QGraphicsView::NoDrag);
     previewLayout->addWidget(m_previewView);
     editLayout->addWidget(previewGroup);
 
@@ -108,6 +141,7 @@ void SkeletonConfigDialog::setupUI()
 
     // 连接信号
     connect(m_loadPresetBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onLoadPreset);
+    connect(m_saveYamlBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onSaveToYaml);
     connect(m_addKeypointBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onAddKeypoint);
     connect(m_removeKeypointBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onRemoveKeypoint);
     connect(m_addBoneBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onAddBone);
@@ -129,7 +163,6 @@ void SkeletonConfigDialog::setupUI()
         if (column == 2 && row < m_config.bones().size()) {
             QColor color = QColorDialog::getColor(m_config.bones()[row].color, this, "选择连线颜色");
             if (color.isValid()) {
-                // 需要重新添加骨架
                 auto bones = m_config.bones();
                 bones[row].color = color;
                 m_config.clearBones();
@@ -137,7 +170,7 @@ void SkeletonConfigDialog::setupUI()
                     m_config.addBone(bone.from, bone.to, bone.color);
                 }
                 refreshBoneTable();
-                updatePreview();
+                updatePreviewLines();
             }
         }
     });
@@ -148,6 +181,7 @@ void SkeletonConfigDialog::setupUI()
 void SkeletonConfigDialog::setConfig(const SkeletonConfig& config)
 {
     m_config = config;
+    m_previewPositions.clear();  // 重置位置
     refreshKeypointTable();
     refreshBoneTable();
     updatePreview();
@@ -157,15 +191,47 @@ void SkeletonConfigDialog::onLoadPreset()
 {
     int index = m_presetCombo->currentIndex();
     if (index == 0) {
-        // 自定义 - 清空或保持
         m_config = SkeletonConfig();
     } else if (index == 1) {
-        // COCO 17
         m_config = SkeletonConfig::createCOCO17();
     }
+    m_previewPositions.clear();  // 重置位置
     refreshKeypointTable();
     refreshBoneTable();
     updatePreview();
+}
+
+void SkeletonConfigDialog::onSaveToYaml()
+{
+    QString path = QFileDialog::getSaveFileName(this, "保存骨架配置", QString(), "YAML 文件 (*.yaml *.yml)");
+    if (path.isEmpty()) return;
+
+    // 使用 SkeletonConfig 的保存功能（保存为 JSON 格式）
+    // 或者直接写 YAML
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "错误", "无法保存文件");
+        return;
+    }
+
+    QTextStream out(&file);
+    out << "# Skeleton Configuration\n";
+    out << "kpt_shape: [" << m_config.keypointCount() << ", 3]\n\n";
+
+    // 关键点名称
+    out << "keypoints:\n";
+    for (int i = 0; i < m_config.keypointCount(); ++i) {
+        out << "  - " << m_config.keypointName(i) << "\n";
+    }
+
+    // 骨架连接 (1-based for YAML)
+    out << "\nskeleton:\n";
+    for (const auto& bone : m_config.bones()) {
+        out << "  - [" << (bone.from + 1) << ", " << (bone.to + 1) << "]\n";
+    }
+
+    file.close();
+    QMessageBox::information(this, "成功", "骨架配置已保存到:\n" + path);
 }
 
 void SkeletonConfigDialog::onAddKeypoint()
@@ -174,8 +240,19 @@ void SkeletonConfigDialog::onAddKeypoint()
     m_config.setKeypointCount(count + 1);
     KeypointDef def(QString("keypoint_%1").arg(count), Qt::red);
     m_config.setKeypointDef(count, def);
+
+    // 添加新位置
+    if (m_previewPositions.size() < count + 1) {
+        auto defaults = getDefaultPositions(count + 1);
+        if (count < defaults.size()) {
+            m_previewPositions.append(defaults[count]);
+        } else {
+            m_previewPositions.append(QPointF(100 + count * 10, 100));
+        }
+    }
+
     refreshKeypointTable();
-    updateBoneComboBoxes();
+    refreshBoneTable();
     updatePreview();
 }
 
@@ -184,7 +261,6 @@ void SkeletonConfigDialog::onRemoveKeypoint()
     int row = m_keypointTable->currentRow();
     if (row < 0 || row >= m_config.keypointCount()) return;
 
-    // 重建关键点列表（移除指定的关键点）
     int count = m_config.keypointCount();
     QVector<KeypointDef> defs;
     for (int i = 0; i < count; ++i) {
@@ -193,7 +269,6 @@ void SkeletonConfigDialog::onRemoveKeypoint()
         }
     }
 
-    // 重建骨架连接（移除涉及删除关键点的连接，并调整索引）
     QVector<BoneConnection> bones;
     for (const auto& bone : m_config.bones()) {
         if (bone.from != row && bone.to != row) {
@@ -203,7 +278,11 @@ void SkeletonConfigDialog::onRemoveKeypoint()
         }
     }
 
-    // 应用更改
+    // 移除位置
+    if (row < m_previewPositions.size()) {
+        m_previewPositions.remove(row);
+    }
+
     m_config.setKeypointCount(defs.size());
     for (int i = 0; i < defs.size(); ++i) {
         m_config.setKeypointDef(i, defs[i]);
@@ -223,7 +302,7 @@ void SkeletonConfigDialog::onAddBone()
     if (m_config.keypointCount() < 2) return;
     m_config.addBone(0, 1, Qt::cyan);
     refreshBoneTable();
-    updatePreview();
+    updatePreviewLines();
 }
 
 void SkeletonConfigDialog::onRemoveBone()
@@ -232,7 +311,7 @@ void SkeletonConfigDialog::onRemoveBone()
     if (row >= 0 && row < m_config.bones().size()) {
         m_config.removeBone(row);
         refreshBoneTable();
-        updatePreview();
+        updatePreviewLines();
     }
 }
 
@@ -240,7 +319,6 @@ void SkeletonConfigDialog::onKeypointCellChanged(int row, int column)
 {
     if (row >= m_config.keypointCount()) return;
     if (column == 1) {
-        // 名称改变
         QTableWidgetItem* item = m_keypointTable->item(row, column);
         if (item) {
             KeypointDef def = m_config.keypointDefs()[row];
@@ -253,9 +331,16 @@ void SkeletonConfigDialog::onKeypointCellChanged(int row, int column)
 
 void SkeletonConfigDialog::onBoneCellChanged(int row, int column)
 {
-    // 由 ComboBox 处理
     Q_UNUSED(row);
     Q_UNUSED(column);
+}
+
+void SkeletonConfigDialog::onPointMoved(int index, const QPointF& newPos)
+{
+    if (index >= 0 && index < m_previewPositions.size()) {
+        m_previewPositions[index] = newPos;
+        updatePreviewLines();
+    }
 }
 
 void SkeletonConfigDialog::refreshKeypointTable()
@@ -266,16 +351,13 @@ void SkeletonConfigDialog::refreshKeypointTable()
     for (int i = 0; i < m_config.keypointCount(); ++i) {
         const KeypointDef& def = m_config.keypointDefs()[i];
 
-        // 索引
         QTableWidgetItem* indexItem = new QTableWidgetItem(QString::number(i));
         indexItem->setFlags(indexItem->flags() & ~Qt::ItemIsEditable);
         m_keypointTable->setItem(i, 0, indexItem);
 
-        // 名称
         QTableWidgetItem* nameItem = new QTableWidgetItem(def.name);
         m_keypointTable->setItem(i, 1, nameItem);
 
-        // 颜色
         QTableWidgetItem* colorItem = new QTableWidgetItem();
         colorItem->setBackground(def.color);
         colorItem->setFlags(colorItem->flags() & ~Qt::ItemIsEditable);
@@ -287,11 +369,13 @@ void SkeletonConfigDialog::refreshKeypointTable()
 void SkeletonConfigDialog::refreshBoneTable()
 {
     m_boneTable->blockSignals(true);
+    m_boneTable->clearContents();
     const auto& bones = m_config.bones();
     m_boneTable->setRowCount(bones.size());
 
     for (int i = 0; i < bones.size(); ++i) {
         const BoneConnection& bone = bones[i];
+        const int boneIndex = i;  // 捕获索引
 
         // 从 ComboBox
         QComboBox* fromCombo = new QComboBox();
@@ -299,19 +383,19 @@ void SkeletonConfigDialog::refreshBoneTable()
             fromCombo->addItem(QString("%1: %2").arg(j).arg(m_config.keypointName(j)), j);
         }
         fromCombo->setCurrentIndex(bone.from);
-        connect(fromCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, i](int index) {
+        connect(fromCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, boneIndex](int newFrom) {
             auto bones = m_config.bones();
-            if (i < bones.size()) {
-                BoneConnection newBone(index, bones[i].to, bones[i].color);
+            if (boneIndex < bones.size()) {
+                BoneConnection newBone(newFrom, bones[boneIndex].to, bones[boneIndex].color);
                 m_config.clearBones();
                 for (int j = 0; j < bones.size(); ++j) {
-                    if (j == i) {
+                    if (j == boneIndex) {
                         m_config.addBone(newBone.from, newBone.to, newBone.color);
                     } else {
                         m_config.addBone(bones[j].from, bones[j].to, bones[j].color);
                     }
                 }
-                updatePreview();
+                updatePreviewLines();
             }
         });
         m_boneTable->setCellWidget(i, 0, fromCombo);
@@ -322,24 +406,23 @@ void SkeletonConfigDialog::refreshBoneTable()
             toCombo->addItem(QString("%1: %2").arg(j).arg(m_config.keypointName(j)), j);
         }
         toCombo->setCurrentIndex(bone.to);
-        connect(toCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), [this, i](int index) {
+        connect(toCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, boneIndex](int newTo) {
             auto bones = m_config.bones();
-            if (i < bones.size()) {
-                BoneConnection newBone(bones[i].from, index, bones[i].color);
+            if (boneIndex < bones.size()) {
+                BoneConnection newBone(bones[boneIndex].from, newTo, bones[boneIndex].color);
                 m_config.clearBones();
                 for (int j = 0; j < bones.size(); ++j) {
-                    if (j == i) {
+                    if (j == boneIndex) {
                         m_config.addBone(newBone.from, newBone.to, newBone.color);
                     } else {
                         m_config.addBone(bones[j].from, bones[j].to, bones[j].color);
                     }
                 }
-                updatePreview();
+                updatePreviewLines();
             }
         });
         m_boneTable->setCellWidget(i, 1, toCombo);
 
-        // 颜色
         QTableWidgetItem* colorItem = new QTableWidgetItem();
         colorItem->setBackground(bone.color);
         colorItem->setFlags(colorItem->flags() & ~Qt::ItemIsEditable);
@@ -350,50 +433,101 @@ void SkeletonConfigDialog::refreshBoneTable()
 
 void SkeletonConfigDialog::updateBoneComboBoxes()
 {
-    // 重建骨架表格以更新关键点名称
     refreshBoneTable();
 }
 
 void SkeletonConfigDialog::updatePreview()
 {
     m_previewScene->clear();
+    m_previewPoints.clear();
+    m_previewLines.clear();
 
     int count = m_config.keypointCount();
     if (count == 0) return;
 
-    QVector<QPointF> positions = getPreviewPositions(count);
+    // 初始化位置（如果需要）
+    if (m_previewPositions.size() != count) {
+        m_previewPositions = getDefaultPositions(count);
+    }
 
     // 绘制骨架连线
     for (const auto& bone : m_config.bones()) {
         if (bone.from < count && bone.to < count) {
             QGraphicsLineItem* line = m_previewScene->addLine(
-                positions[bone.from].x(), positions[bone.from].y(),
-                positions[bone.to].x(), positions[bone.to].y(),
+                m_previewPositions[bone.from].x(), m_previewPositions[bone.from].y(),
+                m_previewPositions[bone.to].x(), m_previewPositions[bone.to].y(),
                 QPen(bone.color, 2));
             line->setZValue(0);
+            m_previewLines.append(line);
         }
     }
 
-    // 绘制关键点
+    // 绘制可拖动的关键点
     for (int i = 0; i < count; ++i) {
         const KeypointDef& def = m_config.keypointDefs()[i];
-        QGraphicsEllipseItem* point = m_previewScene->addEllipse(
-            positions[i].x() - 5, positions[i].y() - 5, 10, 10,
-            QPen(Qt::black, 1), QBrush(def.color));
+        const QPointF& pos = m_previewPositions[i];
+
+        DraggablePoint* point = new DraggablePoint(i, this, -6, -6, 12, 12);
+        point->setPos(pos);
+        point->setPen(QPen(Qt::black, 1));
+        point->setBrush(QBrush(def.color));
         point->setZValue(1);
+        m_previewScene->addItem(point);
+        m_previewPoints.append(point);
 
         // 添加索引标签
         QGraphicsTextItem* label = m_previewScene->addText(QString::number(i));
         label->setDefaultTextColor(Qt::white);
-        label->setPos(positions[i].x() + 6, positions[i].y() - 8);
-        label->setScale(0.8);
+        label->setPos(pos.x() + 8, pos.y() - 10);
+        label->setScale(0.9);
         label->setZValue(2);
     }
 
     m_previewView->fitInView(m_previewScene->sceneRect().adjusted(-20, -20, 20, 20), Qt::KeepAspectRatio);
 }
 
-QVector<QPointF> SkeletonConfigDialog::getPreviewPositions(int count) const
+void SkeletonConfigDialog::updatePreviewLines()
+{
+    // 只更新连线位置，不重建整个场景
+    int count = m_config.keypointCount();
+    const auto& bones = m_config.bones();
+
+    // 如果连线数量变化，需要重建
+    if (m_previewLines.size() != bones.size()) {
+        // 删除旧连线
+        for (auto* line : m_previewLines) {
+            m_previewScene->removeItem(line);
+            delete line;
+        }
+        m_previewLines.clear();
+
+        // 创建新连线
+        for (const auto& bone : bones) {
+            if (bone.from < count && bone.to < count &&
+                bone.from < m_previewPositions.size() && bone.to < m_previewPositions.size()) {
+                QGraphicsLineItem* line = m_previewScene->addLine(
+                    m_previewPositions[bone.from].x(), m_previewPositions[bone.from].y(),
+                    m_previewPositions[bone.to].x(), m_previewPositions[bone.to].y(),
+                    QPen(bone.color, 2));
+                line->setZValue(0);
+                m_previewLines.append(line);
+            }
+        }
+    } else {
+        // 更新现有连线位置
+        for (int i = 0; i < bones.size() && i < m_previewLines.size(); ++i) {
+            const auto& bone = bones[i];
+            if (bone.from < m_previewPositions.size() && bone.to < m_previewPositions.size()) {
+                m_previewLines[i]->setLine(
+                    m_previewPositions[bone.from].x(), m_previewPositions[bone.from].y(),
+                    m_previewPositions[bone.to].x(), m_previewPositions[bone.to].y());
+                m_previewLines[i]->setPen(QPen(bone.color, 2));
+            }
+        }
+    }
+}
+
+QVector<QPointF> SkeletonConfigDialog::getDefaultPositions(int count) const
 {
     QVector<QPointF> positions;
 
@@ -426,8 +560,8 @@ QVector<QPointF> SkeletonConfigDialog::getPreviewPositions(int count) const
 
         for (int i = 0; i < count; ++i) {
             double angle = -M_PI / 2 + (2 * M_PI * i / count);
-            double x = centerX + radius * cos(angle);
-            double y = centerY + radius * sin(angle);
+            double x = centerX + radius * std::cos(angle);
+            double y = centerY + radius * std::sin(angle);
             positions.append(QPointF(x, y));
         }
     }
