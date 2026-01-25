@@ -121,6 +121,7 @@ set(WIDGET_SOURCES
     src/widgets/CanvasView.cpp
     src/widgets/AnnotationItem.cpp
     src/widgets/NewProjectDialog.cpp
+    src/widgets/SplitDatasetDialog.cpp
 )
 
 set(INFERENCE_SOURCES

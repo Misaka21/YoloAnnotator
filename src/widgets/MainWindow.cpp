@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 #include "NewProjectDialog.h"
+#include "SplitDatasetDialog.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -127,6 +128,10 @@ void MainWindow::setupMenus() {
     QMenu* toolsMenu = menuBar()->addMenu("工具(&T)");
     QAction* skeletonAction = toolsMenu->addAction("配置骨架(&S)...");
     connect(skeletonAction, &QAction::triggered, this, &MainWindow::onEditSkeletonConfig);
+
+    toolsMenu->addSeparator();
+    QAction* splitAction = toolsMenu->addAction("分割数据集(&D)...");
+    connect(splitAction, &QAction::triggered, this, &MainWindow::onSplitDataset);
 
     // 自动标注菜单
     QMenu* autoMenu = menuBar()->addMenu("自动标注(&A)");
@@ -953,4 +958,15 @@ QString MainWindow::findClassesTxtInFolder(const QString& folder) {
     }
 
     return QString();
+}
+
+void MainWindow::onSplitDataset() {
+    SplitDatasetDialog dialog(this);
+
+    // 如果已打开文件夹，自动填充路径
+    if (!m_currentFolder.isEmpty()) {
+        dialog.setSourcePath(m_currentFolder, m_labelsFolder);
+    }
+
+    dialog.exec();
 }

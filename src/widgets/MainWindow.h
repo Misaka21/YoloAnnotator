@@ -63,6 +63,9 @@ private slots:
     void onAutoAnnotateBatch();
     void onAutoAnnotateUnannotated();
 
+    // 数据集工具
+    void onSplitDataset();
+
 private:
     // UI组件
     CanvasView* m_canvasView;
