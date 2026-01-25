@@ -114,7 +114,7 @@ jobs:
         shell: cmd
         run: |
           call C:\openvino\setupvars.bat
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install\lib -DWITH_OPENVINO=ON
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install -DWITH_OPENVINO=ON
 
       - name: Build
         shell: cmd
@@ -216,7 +216,7 @@ jobs:
           cmake --install C:\opencv-build --config Release
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install\lib" -DWITH_CUDA=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install" -DWITH_CUDA=ON
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -634,7 +634,7 @@ jobs:
             --volume "${PWD}:/workspace"
           install: |
             apt-get update
-            apt-get install -y cmake g++ make wget
+            apt-get install -y cmake g++ make wget git
             apt-get install -y libgl1-mesa-dev libglu1-mesa-dev libegl1-mesa-dev
             apt-get install -y qt6-base-dev libqt6widgets6 libqt6gui6 libqt6core6 libqt6opengl6-dev
             apt-get install -y libopencv-dev

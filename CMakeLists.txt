@@ -7,6 +7,12 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
+# 兼容性：允许 yaml-cpp 使用旧版 CMake 策略
+if(CMAKE_VERSION VERSION_GREATER_EQUAL "3.30")
+    cmake_policy(SET CMP0177 NEW)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
+endif()
+
 # Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
