@@ -164,7 +164,7 @@ jobs:
       - name: Install CUDA Toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
-          cuda: '11.8.0'
+          cuda: '12.4.0'
           method: 'network'
           sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cufft", "cufft_dev", "curand", "curand_dev", "cusolver", "cusolver_dev", "cusparse", "cusparse_dev", "npp", "npp_dev", "visual_studio_integration"]'
 
@@ -174,8 +174,8 @@ jobs:
           curl -L -o miniconda.exe https://repo.anaconda.com/miniconda/Miniconda3-latest-Windows-x86_64.exe
           Start-Process -Wait -FilePath .\miniconda.exe -ArgumentList '/S', '/D=C:\Miniconda3'
 
-          # 用 conda 安装 cuDNN
-          C:\Miniconda3\Scripts\conda.exe install -y -c conda-forge cudnn=8.9
+          # 用 conda 安装 cuDNN (版本对应 CUDA 12.x)
+          C:\Miniconda3\Scripts\conda.exe install -y -c conda-forge cudnn=9.0
 
           # 复制到 CUDA 目录
           cp C:\Miniconda3\Library\bin\cudnn*.dll "$env:CUDA_PATH\bin\" -Force
@@ -187,7 +187,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-windows-v4
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda124-windows-v1
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -444,7 +444,7 @@ jobs:
       - name: Install CUDA Toolkit
         uses: Jimver/cuda-toolkit@v0.2.16
         with:
-          cuda: '11.8.0'
+          cuda: '12.4.0'
           method: 'network'
 
       - name: Install cuDNN
@@ -452,14 +452,14 @@ jobs:
           wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb
           sudo dpkg -i cuda-keyring_1.1-1_all.deb
           sudo apt-get update
-          sudo apt-get install -y libcudnn8 libcudnn8-dev
+          sudo apt-get install -y libcudnn9-cuda-12 libcudnn9-dev-cuda-12
 
       - name: Cache OpenCV Build
         id: cache-opencv
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-linux-v3
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda124-linux-v1
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
