@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 #include "NewProjectDialog.h"
 #include "SplitDatasetDialog.h"
+#include "SkeletonConfigDialog.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -437,12 +438,17 @@ void MainWindow::onModeChanged(QAction* action) {
 void MainWindow::onZoomChanged(double scale) { m_zoomLabel->setText(QString("%1%").arg(int(scale * 100))); }
 
 void MainWindow::onEditSkeletonConfig() {
-    bool ok;
-    int count = QInputDialog::getInt(this, "骨架配置", "关键点数量:", m_canvasView->skeletonConfig().keypointCount(), 0, 100, 1, &ok);
-    if (ok) {
-        SkeletonConfig config = SkeletonConfig::createCustom(count);
-        m_canvasView->setSkeletonConfig(config); m_annotationIO.setKeypointCount(count);
-        if (count > 0) m_formatCombo->setCurrentIndex(1);
+    SkeletonConfigDialog dialog(this);
+    dialog.setConfig(m_canvasView->skeletonConfig());
+
+    if (dialog.exec() == QDialog::Accepted) {
+        SkeletonConfig config = dialog.config();
+        m_canvasView->setSkeletonConfig(config);
+        m_annotationIO.setKeypointCount(config.keypointCount());
+
+        if (config.keypointCount() > 0) {
+            m_formatCombo->setCurrentIndex(1);  // Pose 模式
+        }
     }
 }
 

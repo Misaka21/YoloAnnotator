@@ -122,6 +122,7 @@ set(WIDGET_SOURCES
     src/widgets/AnnotationItem.cpp
     src/widgets/NewProjectDialog.cpp
     src/widgets/SplitDatasetDialog.cpp
+    src/widgets/SkeletonConfigDialog.cpp
 )
 
 set(INFERENCE_SOURCES
