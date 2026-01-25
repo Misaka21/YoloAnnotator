@@ -309,6 +309,9 @@ QVector<Annotation> YoloDetector::detect(const cv::Mat& image)
         // Apply NMS
         results = applyNMS(results);
 
+        // Apply class mapping
+        results = applyClassMapping(results);
+
         return results;
 
     } catch (const cv::Exception& e) {
@@ -533,4 +536,46 @@ QVector<Annotation> YoloDetector::applyNMS(QVector<Annotation>& detections)
     }
 
     return results;
+}
+
+void YoloDetector::setClassMappings(const QVector<ClassMapping>& mappings)
+{
+    m_classMappings = mappings;
+}
+
+QVector<Annotation> YoloDetector::applyClassMapping(const QVector<Annotation>& detections)
+{
+    // 如果没有配置映射，直接返回原结果
+    if (m_classMappings.isEmpty()) {
+        return detections;
+    }
+
+    QVector<Annotation> result;
+    result.reserve(detections.size());
+
+    for (const auto& ann : detections) {
+        int srcClass = ann.classId();
+
+        // 检查类别是否在映射范围内
+        if (srcClass >= 0 && srcClass < m_classMappings.size()) {
+            const auto& mapping = m_classMappings[srcClass];
+
+            // 如果该类别未启用，跳过
+            if (!mapping.enabled) {
+                continue;
+            }
+
+            // 应用映射
+            Annotation mapped = ann;
+            if (mapping.targetClassId >= 0) {
+                mapped.setClassId(mapping.targetClassId);
+            }
+            result.append(mapped);
+        } else {
+            // 超出映射范围的类别直接保留（或可选跳过）
+            result.append(ann);
+        }
+    }
+
+    return result;
 }

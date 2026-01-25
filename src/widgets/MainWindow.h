@@ -7,12 +7,50 @@
 #include <QStatusBar>
 #include <QMenu>
 #include <QSplitter>
+#include <QTimer>
+#include <QThread>
+#include <QMutex>
+#include <atomic>
 #include "CanvasView.h"
 #include "io/ClassesLoader.h"
 #include "io/AnnotationIO.h"
 #include "io/DatasetConfig.h"
 
 class YoloDetector;
+
+// 批量标注后台工作线程
+class BatchAnnotateWorker : public QObject {
+    Q_OBJECT
+public:
+    BatchAnnotateWorker(YoloDetector* detector, AnnotationIO* io)
+        : m_detector(detector), m_annotationIO(io) {}
+
+    void setFiles(const QStringList& files, const QString& folder,
+                  const QString& labelsFolder, bool overwrite) {
+        m_files = files;
+        m_folder = folder;
+        m_labelsFolder = labelsFolder;
+        m_overwrite = overwrite;
+    }
+    void requestStop() { m_stop = true; }
+
+public slots:
+    void process();
+
+signals:
+    void progressUpdated(int index, int total, const QString& fileName, int detections);
+    void fileCompleted(int fileIndex, const QString& fileName);
+    void finished(int totalProcessed, int totalDetections);
+
+private:
+    YoloDetector* m_detector;
+    AnnotationIO* m_annotationIO;
+    QStringList m_files;
+    QString m_folder;
+    QString m_labelsFolder;
+    bool m_overwrite = true;
+    std::atomic<bool> m_stop{false};
+};
 
 /**
  * @brief 主窗口
@@ -62,6 +100,10 @@ private slots:
     void onAutoAnnotateCurrent();
     void onAutoAnnotateBatch();
     void onAutoAnnotateUnannotated();
+    void onStopBatchAnnotate();  // 停止批量标注
+    void onBatchProgress(int index, int total, const QString& fileName, int detections);
+    void onBatchFileCompleted(int fileIndex, const QString& fileName);
+    void onBatchFinished(int totalProcessed, int totalDetections);
 
     // 数据集工具
     void onSplitDataset();
@@ -99,6 +141,16 @@ private:
     QAction* m_autoSaveAction = nullptr;
     QAction* m_autoAnnotateAction = nullptr;
     QAction* m_batchAnnotateAction = nullptr;
+
+    // 自动标注工具栏
+    QComboBox* m_annotateModeCombo = nullptr;  // 覆盖/追加模式
+    QAction* m_quickAnnotateAction = nullptr;   // 快速标注按钮
+    QAction* m_stopBatchAction = nullptr;       // 停止批量标注
+
+    // 批量标注状态
+    bool m_batchRunning = false;
+    QThread* m_batchThread = nullptr;
+    BatchAnnotateWorker* m_batchWorker = nullptr;
 
     // 自动标注
     YoloDetector* m_detector = nullptr;

@@ -37,6 +37,14 @@ struct LetterboxInfo {
 };
 
 /**
+ * @brief 类别映射配置
+ */
+struct ClassMapping {
+    bool enabled = true;      // 是否启用该类别
+    int targetClassId = -1;   // 映射到的目标类别ID（-1表示保持原ID）
+};
+
+/**
  * @brief YOLO 检测器 (OpenCV DNN)
  */
 class YoloDetector : public QObject {
@@ -68,6 +76,10 @@ public:
     void setBackend(InferenceBackend backend);
     InferenceBackend backend() const { return m_backend; }
 
+    // 类别映射
+    void setClassMappings(const QVector<ClassMapping>& mappings);
+    QVector<ClassMapping> classMappings() const { return m_classMappings; }
+
     // 检测可用后端
     static QVector<InferenceBackend> availableBackends();
     static QString backendName(InferenceBackend backend);
@@ -92,6 +104,9 @@ private:
     float m_iouThreshold = 0.45f;
     InferenceBackend m_backend = InferenceBackend::CPU;
 
+    // 类别映射
+    QVector<ClassMapping> m_classMappings;
+
     // 内部方法
     cv::Mat preprocess(const cv::Mat& src, LetterboxInfo& info);
     QVector<Annotation> postprocessDetection(const cv::Mat& output,
@@ -99,6 +114,7 @@ private:
     QVector<Annotation> postprocessPose(const cv::Mat& output,
         const LetterboxInfo& info, int imgW, int imgH);
     QVector<Annotation> applyNMS(QVector<Annotation>& detections);
+    QVector<Annotation> applyClassMapping(const QVector<Annotation>& detections);
     bool analyzeModel();
 
     // 工具函数

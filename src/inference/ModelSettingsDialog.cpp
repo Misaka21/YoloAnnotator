@@ -89,6 +89,31 @@ void ModelSettingsDialog::setupUI()
 
     mainLayout->addWidget(settingsGroup);
 
+    // Class mapping group
+    m_mappingGroup = new QGroupBox("类别映射");
+    QVBoxLayout* mappingGroupLayout = new QVBoxLayout(m_mappingGroup);
+
+    QScrollArea* scrollArea = new QScrollArea();
+    scrollArea->setWidgetResizable(true);
+    scrollArea->setMinimumHeight(120);
+    scrollArea->setMaximumHeight(200);
+
+    m_mappingContainer = new QWidget();
+    m_mappingLayout = new QVBoxLayout(m_mappingContainer);
+    m_mappingLayout->setContentsMargins(4, 4, 4, 4);
+    m_mappingLayout->setSpacing(4);
+
+    QLabel* placeholderLabel = new QLabel("加载模型后显示类别映射");
+    placeholderLabel->setStyleSheet("color: gray;");
+    placeholderLabel->setAlignment(Qt::AlignCenter);
+    m_mappingLayout->addWidget(placeholderLabel);
+    m_mappingLayout->addStretch();
+
+    scrollArea->setWidget(m_mappingContainer);
+    mappingGroupLayout->addWidget(scrollArea);
+
+    mainLayout->addWidget(m_mappingGroup);
+
     // Buttons
     QHBoxLayout* buttonLayout = new QHBoxLayout();
     QPushButton* applyBtn = new QPushButton("应用");
@@ -128,6 +153,7 @@ void ModelSettingsDialog::onLoadModel()
 
     if (success) {
         updateModelInfo();
+        rebuildMappingUI();
         QMessageBox::information(this, "成功", "模型加载成功");
     } else {
         QMessageBox::critical(this, "错误", "模型加载失败");
@@ -147,6 +173,16 @@ void ModelSettingsDialog::onApplySettings()
     // 使用 itemData 获取正确的后端枚举值
     int backendValue = m_backendCombo->currentData().toInt();
     m_detector->setBackend(static_cast<InferenceBackend>(backendValue));
+
+    // 收集类别映射配置
+    QVector<ClassMapping> mappings;
+    for (int i = 0; i < m_enableChecks.size(); ++i) {
+        ClassMapping mapping;
+        mapping.enabled = m_enableChecks[i]->isChecked();
+        mapping.targetClassId = m_targetCombos[i]->currentIndex() - 1;  // -1 因为第一项是"保持原ID"
+        mappings.append(mapping);
+    }
+    m_detector->setClassMappings(mappings);
 
     QMessageBox::information(this, "提示", "参数已应用");
 }
@@ -171,4 +207,92 @@ void ModelSettingsDialog::updateModelInfo()
         m_inputSizeLabel->setText("-");
         m_classesLabel->setText("-");
     }
+}
+
+void ModelSettingsDialog::setDatasetClasses(const QStringList& classes)
+{
+    m_datasetClasses = classes;
+    // 如果模型已加载，重建映射 UI
+    if (m_detector->isLoaded()) {
+        rebuildMappingUI();
+    }
+}
+
+void ModelSettingsDialog::rebuildMappingUI()
+{
+    // 清空现有的映射控件
+    m_enableChecks.clear();
+    m_targetCombos.clear();
+
+    // 删除所有子控件
+    QLayoutItem* item;
+    while ((item = m_mappingLayout->takeAt(0)) != nullptr) {
+        if (item->widget()) {
+            delete item->widget();
+        }
+        delete item;
+    }
+
+    if (!m_detector->isLoaded()) {
+        QLabel* label = new QLabel("加载模型后显示类别映射");
+        label->setStyleSheet("color: gray;");
+        label->setAlignment(Qt::AlignCenter);
+        m_mappingLayout->addWidget(label);
+        m_mappingLayout->addStretch();
+        return;
+    }
+
+    int numClasses = m_detector->numClasses();
+
+    // 获取已有的映射配置
+    QVector<ClassMapping> existingMappings = m_detector->classMappings();
+
+    for (int i = 0; i < numClasses; ++i) {
+        QHBoxLayout* rowLayout = new QHBoxLayout();
+        rowLayout->setSpacing(8);
+
+        // 启用复选框
+        QCheckBox* enableCheck = new QCheckBox(QString("class_%1").arg(i));
+        enableCheck->setChecked(true);
+        enableCheck->setMinimumWidth(80);
+
+        // 箭头标签
+        QLabel* arrowLabel = new QLabel("→");
+
+        // 目标类别下拉框
+        QComboBox* targetCombo = new QComboBox();
+        targetCombo->addItem("保持原ID");  // 索引 0
+        for (int j = 0; j < m_datasetClasses.size(); ++j) {
+            targetCombo->addItem(QString("%1: %2").arg(j).arg(m_datasetClasses[j]));
+        }
+        targetCombo->setMinimumWidth(150);
+
+        // 恢复之前的配置
+        if (i < existingMappings.size()) {
+            enableCheck->setChecked(existingMappings[i].enabled);
+            int targetIdx = existingMappings[i].targetClassId;
+            if (targetIdx >= 0 && targetIdx < m_datasetClasses.size()) {
+                targetCombo->setCurrentIndex(targetIdx + 1);  // +1 因为第一项是"保持原ID"
+            }
+        } else {
+            // 默认映射到同索引的数据集类别
+            if (i < m_datasetClasses.size()) {
+                targetCombo->setCurrentIndex(i + 1);
+            }
+        }
+
+        rowLayout->addWidget(enableCheck);
+        rowLayout->addWidget(arrowLabel);
+        rowLayout->addWidget(targetCombo);
+        rowLayout->addStretch();
+
+        m_enableChecks.append(enableCheck);
+        m_targetCombos.append(targetCombo);
+
+        QWidget* rowWidget = new QWidget();
+        rowWidget->setLayout(rowLayout);
+        m_mappingLayout->addWidget(rowWidget);
+    }
+
+    m_mappingLayout->addStretch();
 }

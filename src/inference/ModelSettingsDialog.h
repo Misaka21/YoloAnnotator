@@ -3,9 +3,12 @@
 #include <QLineEdit>
 #include <QDoubleSpinBox>
 #include <QComboBox>
+#include <QCheckBox>
 #include <QLabel>
 #include <QPushButton>
 #include <QGroupBox>
+#include <QScrollArea>
+#include <QVBoxLayout>
 
 class YoloDetector;
 
@@ -16,6 +19,9 @@ class ModelSettingsDialog : public QDialog {
     Q_OBJECT
 public:
     explicit ModelSettingsDialog(YoloDetector* detector, QWidget* parent = nullptr);
+
+    // 设置数据集类别（用于映射下拉框）
+    void setDatasetClasses(const QStringList& classes);
 
 private slots:
     void onBrowseModel();
@@ -40,6 +46,15 @@ private:
     QDoubleSpinBox* m_iouSpinBox;
     QComboBox* m_backendCombo;
 
+    // 类别映射
+    QGroupBox* m_mappingGroup;
+    QWidget* m_mappingContainer;
+    QVBoxLayout* m_mappingLayout;
+    QVector<QCheckBox*> m_enableChecks;
+    QVector<QComboBox*> m_targetCombos;
+    QStringList m_datasetClasses;
+
     void setupUI();
     void updateModelInfo();
+    void rebuildMappingUI();  // 重建类别映射 UI
 };

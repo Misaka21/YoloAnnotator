@@ -22,6 +22,52 @@
 #include "inference/YoloDetector.h"
 #include "inference/ModelSettingsDialog.h"
 
+// BatchAnnotateWorker 实现
+void BatchAnnotateWorker::process() {
+    int total = m_files.size();
+    int totalDetections = 0;
+
+    for (int i = 0; i < total; ++i) {
+        if (m_stop) break;
+
+        QString fileName = m_files[i];
+        QString imagePath = m_folder + "/" + fileName;
+
+        emit progressUpdated(i, total, fileName, 0);
+
+        QImage image(imagePath);
+        if (image.isNull()) continue;
+
+        auto annotations = m_detector->detect(image);
+        int detCount = annotations.size();
+        totalDetections += detCount;
+
+        // 计算标签路径
+        QString txtPath;
+        if (!m_labelsFolder.isEmpty()) {
+            txtPath = m_labelsFolder + "/" + QFileInfo(fileName).completeBaseName() + ".txt";
+        } else {
+            txtPath = m_folder + "/" + QFileInfo(fileName).completeBaseName() + ".txt";
+        }
+
+        // 根据模式保存
+        if (m_overwrite) {
+            m_annotationIO->save(txtPath, annotations);
+        } else {
+            QVector<Annotation> existing;
+            if (QFile::exists(txtPath)) {
+                existing = m_annotationIO->load(txtPath);
+            }
+            existing.append(annotations);
+            m_annotationIO->save(txtPath, existing);
+        }
+
+        emit fileCompleted(i, fileName);
+    }
+
+    emit finished(m_stop ? -1 : total, totalDetections);
+}
+
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_detector = new YoloDetector(this);
     setupUI(); setupMenus(); setupToolBar(); setupConnections();
@@ -200,6 +246,24 @@ void MainWindow::setupToolBar() {
     m_autoSaveAction->setCheckable(true);
     m_autoSaveAction->setChecked(m_autoSave);
     connect(m_autoSaveAction, &QAction::toggled, [this](bool checked) { m_autoSave = checked; });
+
+    // 自动标注工具栏
+    toolbar->addSeparator();
+    toolbar->addWidget(new QLabel(" 自动标注: "));
+    m_annotateModeCombo = new QComboBox();
+    m_annotateModeCombo->addItem("追加");
+    m_annotateModeCombo->addItem("覆盖");
+    m_annotateModeCombo->setToolTip("选择标注模式:\n追加 - 保留现有标注\n覆盖 - 清除后重新标注");
+    m_annotateModeCombo->setFixedWidth(60);
+    toolbar->addWidget(m_annotateModeCombo);
+    m_quickAnnotateAction = toolbar->addAction("识别 (G)");
+    m_quickAnnotateAction->setShortcut(QKeySequence("G"));
+    m_quickAnnotateAction->setToolTip("对当前图片进行自动标注 (G)");
+    connect(m_quickAnnotateAction, &QAction::triggered, this, &MainWindow::onAutoAnnotateCurrent);
+    m_stopBatchAction = toolbar->addAction("停止");
+    m_stopBatchAction->setToolTip("停止批量标注");
+    m_stopBatchAction->setVisible(false);
+    connect(m_stopBatchAction, &QAction::triggered, this, &MainWindow::onStopBatchAnnotate);
 }
 
 void MainWindow::setupConnections() {
@@ -602,6 +666,7 @@ void MainWindow::onContextMenuRequested(int annotationIndex, const QPoint& globa
 
 void MainWindow::onModelSettings() {
     ModelSettingsDialog dialog(m_detector, this);
+    dialog.setDatasetClasses(m_classesLoader.classNames());
     dialog.exec();
 }
 
@@ -615,28 +680,55 @@ void MainWindow::onAutoAnnotateCurrent() {
         return;
     }
 
+    // 更新状态显示
+    m_statusLabel->setText("正在识别...");
+
+    // 更新文件列表当前项状态
+    if (m_currentIndex >= 0 && m_currentIndex < m_fileList->count()) {
+        QListWidgetItem* item = m_fileList->item(m_currentIndex);
+        item->setText(QString::fromUtf8("⏳ ") + m_imageFiles[m_currentIndex]);
+        item->setForeground(QColor(255, 165, 0));  // 橙色表示识别中
+    }
+    QApplication::processEvents();
+
     QApplication::setOverrideCursor(Qt::WaitCursor);
     auto annotations = m_detector->detect(m_canvasView->currentImage());
     QApplication::restoreOverrideCursor();
 
+    // 根据工具栏的模式决定是否清除
+    bool overwriteMode = m_annotateModeCombo->currentIndex() == 1;  // 1=覆盖
+
     if (annotations.isEmpty()) {
-        QMessageBox::information(this, "提示", "未检测到任何目标");
+        m_statusLabel->setText("未检测到目标");
+        // 恢复文件列表状态
+        if (m_currentIndex >= 0 && m_currentIndex < m_fileList->count()) {
+            QString imgPath = m_currentFolder + "/" + m_imageFiles[m_currentIndex];
+            bool hasAnnotation = QFile::exists(getAnnotationPath(imgPath)) || !m_canvasView->annotations().isEmpty();
+            QListWidgetItem* item = m_fileList->item(m_currentIndex);
+            item->setText((hasAnnotation ? QString::fromUtf8("✓ ") : "   ") + m_imageFiles[m_currentIndex]);
+            item->setForeground(hasAnnotation ? QColor(0, 180, 0) : palette().text().color());
+        }
         return;
     }
 
-    // 询问替换或追加
-    auto reply = QMessageBox::question(this, "自动标注",
-        QString("检测到 %1 个目标\n\n替换当前标注? (否=追加)").arg(annotations.size()),
-        QMessageBox::Yes | QMessageBox::No | QMessageBox::Cancel);
-
-    if (reply == QMessageBox::Cancel) return;
-    if (reply == QMessageBox::Yes) m_canvasView->clearAnnotations();
+    if (overwriteMode) {
+        m_canvasView->clearAnnotations();
+    }
 
     for (const auto& ann : annotations) {
         m_canvasView->addAnnotation(ann);
     }
 
-    m_statusLabel->setText(QString("自动标注完成: 检测到 %1 个目标").arg(annotations.size()));
+    // 更新文件列表当前项状态（已标注）
+    if (m_currentIndex >= 0 && m_currentIndex < m_fileList->count()) {
+        QListWidgetItem* item = m_fileList->item(m_currentIndex);
+        item->setText(QString::fromUtf8("✓ ") + m_imageFiles[m_currentIndex]);
+        item->setForeground(QColor(0, 180, 0));
+    }
+
+    m_statusLabel->setText(QString("检测到 %1 个目标 [%2]")
+        .arg(annotations.size())
+        .arg(overwriteMode ? "覆盖" : "追加"));
 }
 
 void MainWindow::onAutoAnnotateBatch() {
@@ -648,9 +740,16 @@ void MainWindow::onAutoAnnotateBatch() {
         QMessageBox::warning(this, "警告", "请先打开文件夹");
         return;
     }
+    if (m_batchRunning) {
+        QMessageBox::information(this, "提示", "批量标注正在进行中");
+        return;
+    }
 
+    bool overwriteMode = m_annotateModeCombo->currentIndex() == 1;
     auto reply = QMessageBox::question(this, "批量自动标注",
-        QString("将对 %1 张图片进行自动标注\n已有标注的图片将被覆盖\n\n是否继续?").arg(m_imageFiles.size()),
+        QString("将对 %1 张图片进行自动标注\n模式: %2\n\n是否继续?")
+            .arg(m_imageFiles.size())
+            .arg(overwriteMode ? "覆盖现有标注" : "追加到现有标注"),
         QMessageBox::Yes | QMessageBox::No);
 
     if (reply != QMessageBox::Yes) return;
@@ -658,34 +757,79 @@ void MainWindow::onAutoAnnotateBatch() {
     // 保存当前
     if (m_modified && m_autoSave) saveCurrentAnnotation();
 
-    QProgressDialog progress("正在自动标注...", "取消", 0, m_imageFiles.size(), this);
-    progress.setWindowModality(Qt::WindowModal);
+    // 创建后台线程
+    m_batchThread = new QThread(this);
+    m_batchWorker = new BatchAnnotateWorker(m_detector, &m_annotationIO);
+    m_batchWorker->setFiles(m_imageFiles, m_currentFolder, m_labelsFolder, overwriteMode);
+    m_batchWorker->moveToThread(m_batchThread);
 
-    int totalDetections = 0;
-    for (int i = 0; i < m_imageFiles.size(); ++i) {
-        if (progress.wasCanceled()) break;
-        progress.setValue(i);
-        progress.setLabelText(QString("正在处理: %1\n(%2/%3)").arg(m_imageFiles[i]).arg(i+1).arg(m_imageFiles.size()));
-        QApplication::processEvents();
+    connect(m_batchThread, &QThread::started, m_batchWorker, &BatchAnnotateWorker::process);
+    connect(m_batchWorker, &BatchAnnotateWorker::progressUpdated, this, &MainWindow::onBatchProgress);
+    connect(m_batchWorker, &BatchAnnotateWorker::fileCompleted, this, &MainWindow::onBatchFileCompleted);
+    connect(m_batchWorker, &BatchAnnotateWorker::finished, this, &MainWindow::onBatchFinished);
+    connect(m_batchWorker, &BatchAnnotateWorker::finished, m_batchThread, &QThread::quit);
+    connect(m_batchThread, &QThread::finished, m_batchWorker, &QObject::deleteLater);
+    connect(m_batchThread, &QThread::finished, m_batchThread, &QObject::deleteLater);
 
-        QString imagePath = m_currentFolder + "/" + m_imageFiles[i];
-        QImage image(imagePath);
-        if (image.isNull()) continue;
+    m_batchRunning = true;
+    m_stopBatchAction->setVisible(true);
+    m_batchAnnotateAction->setEnabled(false);
 
-        auto annotations = m_detector->detect(image);
-        totalDetections += annotations.size();
+    m_batchThread->start();
+}
 
-        // 保存
-        QString txtPath = getAnnotationPath(imagePath);
-        m_annotationIO.save(txtPath, annotations);
+void MainWindow::onBatchProgress(int index, int total, const QString& fileName, int) {
+    // 更新文件列表状态 - 正在处理
+    int fileIdx = m_imageFiles.indexOf(fileName);
+    if (fileIdx >= 0 && fileIdx < m_fileList->count()) {
+        QListWidgetItem* item = m_fileList->item(fileIdx);
+        item->setText(QString::fromUtf8("⏳ ") + fileName);
+        item->setForeground(QColor(255, 165, 0));
     }
-    progress.setValue(m_imageFiles.size());
 
-    updateFileList();
-    if (m_currentIndex >= 0) loadImage(m_currentIndex);
+    // 更新状态栏
+    bool overwriteMode = m_annotateModeCombo->currentIndex() == 1;
+    int percent = (index + 1) * 100 / total;
+    m_statusLabel->setText(QString("批量标注[%1]: %2 (%3/%4) %5%")
+        .arg(overwriteMode ? "覆盖" : "追加")
+        .arg(fileName).arg(index + 1).arg(total).arg(percent));
+}
 
-    QMessageBox::information(this, "完成",
-        QString("批量标注完成!\n共处理 %1 张图片\n检测到 %2 个目标").arg(m_imageFiles.size()).arg(totalDetections));
+void MainWindow::onBatchFileCompleted(int, const QString& fileName) {
+    // 更新文件列表状态 - 已完成
+    int fileIdx = m_imageFiles.indexOf(fileName);
+    if (fileIdx >= 0 && fileIdx < m_fileList->count()) {
+        QListWidgetItem* item = m_fileList->item(fileIdx);
+        item->setText(QString::fromUtf8("✓ ") + fileName);
+        item->setForeground(QColor(0, 180, 0));
+    }
+}
+
+void MainWindow::onBatchFinished(int totalProcessed, int totalDetections) {
+    m_batchRunning = false;
+    m_stopBatchAction->setVisible(false);
+    m_batchAnnotateAction->setEnabled(true);
+    m_batchThread = nullptr;
+    m_batchWorker = nullptr;
+
+    // 刷新当前图片
+    if (m_currentIndex >= 0) {
+        loadImage(m_currentIndex);
+    }
+
+    if (totalProcessed >= 0) {
+        m_statusLabel->setText(QString("批量标注完成: %1 张, 检测到 %2 个目标")
+            .arg(totalProcessed).arg(totalDetections));
+    } else {
+        m_statusLabel->setText("批量标注已停止");
+    }
+}
+
+void MainWindow::onStopBatchAnnotate() {
+    if (m_batchWorker) {
+        m_batchWorker->requestStop();
+    }
+    m_statusLabel->setText("正在停止...");
 }
 
 void MainWindow::onAutoAnnotateUnannotated() {
@@ -695,6 +839,10 @@ void MainWindow::onAutoAnnotateUnannotated() {
     }
     if (m_imageFiles.isEmpty()) {
         QMessageBox::warning(this, "警告", "请先打开文件夹");
+        return;
+    }
+    if (m_batchRunning) {
+        QMessageBox::information(this, "提示", "批量标注正在进行中");
         return;
     }
 
@@ -722,34 +870,25 @@ void MainWindow::onAutoAnnotateUnannotated() {
     // 保存当前
     if (m_modified && m_autoSave) saveCurrentAnnotation();
 
-    QProgressDialog progress("正在自动标注...", "取消", 0, unannotated.size(), this);
-    progress.setWindowModality(Qt::WindowModal);
+    // 创建后台线程（未标注的图片使用覆盖模式）
+    m_batchThread = new QThread(this);
+    m_batchWorker = new BatchAnnotateWorker(m_detector, &m_annotationIO);
+    m_batchWorker->setFiles(unannotated, m_currentFolder, m_labelsFolder, true);
+    m_batchWorker->moveToThread(m_batchThread);
 
-    int totalDetections = 0;
-    for (int i = 0; i < unannotated.size(); ++i) {
-        if (progress.wasCanceled()) break;
-        progress.setValue(i);
-        progress.setLabelText(QString("正在处理: %1\n(%2/%3)").arg(unannotated[i]).arg(i+1).arg(unannotated.size()));
-        QApplication::processEvents();
+    connect(m_batchThread, &QThread::started, m_batchWorker, &BatchAnnotateWorker::process);
+    connect(m_batchWorker, &BatchAnnotateWorker::progressUpdated, this, &MainWindow::onBatchProgress);
+    connect(m_batchWorker, &BatchAnnotateWorker::fileCompleted, this, &MainWindow::onBatchFileCompleted);
+    connect(m_batchWorker, &BatchAnnotateWorker::finished, this, &MainWindow::onBatchFinished);
+    connect(m_batchWorker, &BatchAnnotateWorker::finished, m_batchThread, &QThread::quit);
+    connect(m_batchThread, &QThread::finished, m_batchWorker, &QObject::deleteLater);
+    connect(m_batchThread, &QThread::finished, m_batchThread, &QObject::deleteLater);
 
-        QString imagePath = m_currentFolder + "/" + unannotated[i];
-        QImage image(imagePath);
-        if (image.isNull()) continue;
+    m_batchRunning = true;
+    m_stopBatchAction->setVisible(true);
+    m_batchAnnotateAction->setEnabled(false);
 
-        auto annotations = m_detector->detect(image);
-        totalDetections += annotations.size();
-
-        // 保存
-        QString txtPath = getAnnotationPath(imagePath);
-        m_annotationIO.save(txtPath, annotations);
-    }
-    progress.setValue(unannotated.size());
-
-    updateFileList();
-    if (m_currentIndex >= 0) loadImage(m_currentIndex);
-
-    QMessageBox::information(this, "完成",
-        QString("标注完成!\n共处理 %1 张图片\n检测到 %2 个目标").arg(unannotated.size()).arg(totalDetections));
+    m_batchThread->start();
 }
 
 // ==================== 项目操作 ====================
