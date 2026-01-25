@@ -440,11 +440,16 @@ void MainWindow::onZoomChanged(double scale) { m_zoomLabel->setText(QString("%1%
 void MainWindow::onEditSkeletonConfig() {
     SkeletonConfigDialog dialog(this);
     dialog.setConfig(m_canvasView->skeletonConfig());
+    dialog.setProjectPath(m_datasetConfig.projectPath());  // 传递项目路径
 
     if (dialog.exec() == QDialog::Accepted) {
         SkeletonConfig config = dialog.config();
         m_canvasView->setSkeletonConfig(config);
         m_annotationIO.setKeypointCount(config.keypointCount());
+
+        // 更新项目配置
+        m_datasetConfig.setSkeletonConfig(config);
+        m_datasetConfig.setKptShape(config.keypointCount(), 3);
 
         if (config.keypointCount() > 0) {
             m_formatCombo->setCurrentIndex(1);  // Pose 模式

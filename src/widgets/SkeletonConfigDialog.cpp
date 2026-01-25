@@ -1,4 +1,5 @@
 #include "SkeletonConfigDialog.h"
+#include "io/DatasetConfig.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -8,7 +9,6 @@
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QGraphicsLineItem>
-#include <QGraphicsTextItem>
 #include <QGraphicsSceneMouseEvent>
 #include <QDialogButtonBox>
 #include <cmath>
@@ -27,7 +27,6 @@ DraggablePoint::DraggablePoint(int index, SkeletonConfigDialog* dialog, qreal x,
 void DraggablePoint::mouseMoveEvent(QGraphicsSceneMouseEvent* event)
 {
     QGraphicsEllipseItem::mouseMoveEvent(event);
-    // 通知对话框更新连线
     QPointF center = pos() + rect().center();
     m_dialog->onPointMoved(m_index, center);
 }
@@ -60,11 +59,12 @@ void SkeletonConfigDialog::setupUI()
     m_presetCombo->addItem("自定义");
     m_presetCombo->addItem("COCO 17 关键点");
     m_loadPresetBtn = new QPushButton("加载");
-    m_saveYamlBtn = new QPushButton("保存到 YAML...");
+    m_saveBtn = new QPushButton("保存到项目");
+    m_saveBtn->setToolTip("保存骨架配置到项目 YAML 文件");
     presetLayout->addWidget(m_presetCombo);
     presetLayout->addWidget(m_loadPresetBtn);
     presetLayout->addStretch();
-    presetLayout->addWidget(m_saveYamlBtn);
+    presetLayout->addWidget(m_saveBtn);
     mainLayout->addWidget(presetGroup);
 
     // 主编辑区域
@@ -141,7 +141,7 @@ void SkeletonConfigDialog::setupUI()
 
     // 连接信号
     connect(m_loadPresetBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onLoadPreset);
-    connect(m_saveYamlBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onSaveToYaml);
+    connect(m_saveBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onSaveToProject);
     connect(m_addKeypointBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onAddKeypoint);
     connect(m_removeKeypointBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onRemoveKeypoint);
     connect(m_addBoneBtn, &QPushButton::clicked, this, &SkeletonConfigDialog::onAddBone);
@@ -181,7 +181,7 @@ void SkeletonConfigDialog::setupUI()
 void SkeletonConfigDialog::setConfig(const SkeletonConfig& config)
 {
     m_config = config;
-    m_previewPositions.clear();  // 重置位置
+    m_previewPositions.clear();
     refreshKeypointTable();
     refreshBoneTable();
     updatePreview();
@@ -195,43 +195,40 @@ void SkeletonConfigDialog::onLoadPreset()
     } else if (index == 1) {
         m_config = SkeletonConfig::createCOCO17();
     }
-    m_previewPositions.clear();  // 重置位置
+    m_previewPositions.clear();
     refreshKeypointTable();
     refreshBoneTable();
     updatePreview();
 }
 
-void SkeletonConfigDialog::onSaveToYaml()
+void SkeletonConfigDialog::onSaveToProject()
 {
-    QString path = QFileDialog::getSaveFileName(this, "保存骨架配置", QString(), "YAML 文件 (*.yaml *.yml)");
-    if (path.isEmpty()) return;
-
-    // 使用 SkeletonConfig 的保存功能（保存为 JSON 格式）
-    // 或者直接写 YAML
-    QFile file(path);
-    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-        QMessageBox::warning(this, "错误", "无法保存文件");
-        return;
+    if (m_projectPath.isEmpty()) {
+        // 没有项目路径，让用户选择保存位置
+        QString path = QFileDialog::getSaveFileName(this, "保存骨架配置", QString(), "YAML 文件 (*.yaml *.yml)");
+        if (path.isEmpty()) return;
+        m_projectPath = path;
     }
 
-    QTextStream out(&file);
-    out << "# Skeleton Configuration\n";
-    out << "kpt_shape: [" << m_config.keypointCount() << ", 3]\n\n";
-
-    // 关键点名称
-    out << "keypoints:\n";
-    for (int i = 0; i < m_config.keypointCount(); ++i) {
-        out << "  - " << m_config.keypointName(i) << "\n";
+    // 加载现有配置（如果存在）
+    DatasetConfig projectConfig;
+    if (QFile::exists(m_projectPath)) {
+        projectConfig.loadYAML(m_projectPath);
     }
 
-    // 骨架连接 (1-based for YAML)
-    out << "\nskeleton:\n";
-    for (const auto& bone : m_config.bones()) {
-        out << "  - [" << (bone.from + 1) << ", " << (bone.to + 1) << "]\n";
+    // 更新骨架配置
+    projectConfig.setSkeletonConfig(m_config);
+    projectConfig.setKptShape(m_config.keypointCount(), 3);
+    if (m_config.keypointCount() > 0) {
+        projectConfig.setTaskType(DatasetConfig::Pose);
     }
 
-    file.close();
-    QMessageBox::information(this, "成功", "骨架配置已保存到:\n" + path);
+    // 保存
+    if (projectConfig.saveYAML(m_projectPath)) {
+        QMessageBox::information(this, "成功", "骨架配置已保存到:\n" + m_projectPath);
+    } else {
+        QMessageBox::warning(this, "错误", "无法保存到:\n" + m_projectPath);
+    }
 }
 
 void SkeletonConfigDialog::onAddKeypoint()
@@ -241,7 +238,6 @@ void SkeletonConfigDialog::onAddKeypoint()
     KeypointDef def(QString("keypoint_%1").arg(count), Qt::red);
     m_config.setKeypointDef(count, def);
 
-    // 添加新位置
     if (m_previewPositions.size() < count + 1) {
         auto defaults = getDefaultPositions(count + 1);
         if (count < defaults.size()) {
@@ -278,7 +274,6 @@ void SkeletonConfigDialog::onRemoveKeypoint()
         }
     }
 
-    // 移除位置
     if (row < m_previewPositions.size()) {
         m_previewPositions.remove(row);
     }
@@ -340,6 +335,7 @@ void SkeletonConfigDialog::onPointMoved(int index, const QPointF& newPos)
     if (index >= 0 && index < m_previewPositions.size()) {
         m_previewPositions[index] = newPos;
         updatePreviewLines();
+        updatePreviewLabels();
     }
 }
 
@@ -375,9 +371,8 @@ void SkeletonConfigDialog::refreshBoneTable()
 
     for (int i = 0; i < bones.size(); ++i) {
         const BoneConnection& bone = bones[i];
-        const int boneIndex = i;  // 捕获索引
+        const int boneIndex = i;
 
-        // 从 ComboBox
         QComboBox* fromCombo = new QComboBox();
         for (int j = 0; j < m_config.keypointCount(); ++j) {
             fromCombo->addItem(QString("%1: %2").arg(j).arg(m_config.keypointName(j)), j);
@@ -400,7 +395,6 @@ void SkeletonConfigDialog::refreshBoneTable()
         });
         m_boneTable->setCellWidget(i, 0, fromCombo);
 
-        // 到 ComboBox
         QComboBox* toCombo = new QComboBox();
         for (int j = 0; j < m_config.keypointCount(); ++j) {
             toCombo->addItem(QString("%1: %2").arg(j).arg(m_config.keypointName(j)), j);
@@ -441,11 +435,11 @@ void SkeletonConfigDialog::updatePreview()
     m_previewScene->clear();
     m_previewPoints.clear();
     m_previewLines.clear();
+    m_previewLabels.clear();
 
     int count = m_config.keypointCount();
     if (count == 0) return;
 
-    // 初始化位置（如果需要）
     if (m_previewPositions.size() != count) {
         m_previewPositions = getDefaultPositions(count);
     }
@@ -462,7 +456,7 @@ void SkeletonConfigDialog::updatePreview()
         }
     }
 
-    // 绘制可拖动的关键点
+    // 绘制可拖动的关键点和标签
     for (int i = 0; i < count; ++i) {
         const KeypointDef& def = m_config.keypointDefs()[i];
         const QPointF& pos = m_previewPositions[i];
@@ -475,12 +469,13 @@ void SkeletonConfigDialog::updatePreview()
         m_previewScene->addItem(point);
         m_previewPoints.append(point);
 
-        // 添加索引标签
+        // 索引标签
         QGraphicsTextItem* label = m_previewScene->addText(QString::number(i));
         label->setDefaultTextColor(Qt::white);
         label->setPos(pos.x() + 8, pos.y() - 10);
         label->setScale(0.9);
         label->setZValue(2);
+        m_previewLabels.append(label);
     }
 
     m_previewView->fitInView(m_previewScene->sceneRect().adjusted(-20, -20, 20, 20), Qt::KeepAspectRatio);
@@ -488,20 +483,16 @@ void SkeletonConfigDialog::updatePreview()
 
 void SkeletonConfigDialog::updatePreviewLines()
 {
-    // 只更新连线位置，不重建整个场景
     int count = m_config.keypointCount();
     const auto& bones = m_config.bones();
 
-    // 如果连线数量变化，需要重建
     if (m_previewLines.size() != bones.size()) {
-        // 删除旧连线
         for (auto* line : m_previewLines) {
             m_previewScene->removeItem(line);
             delete line;
         }
         m_previewLines.clear();
 
-        // 创建新连线
         for (const auto& bone : bones) {
             if (bone.from < count && bone.to < count &&
                 bone.from < m_previewPositions.size() && bone.to < m_previewPositions.size()) {
@@ -514,7 +505,6 @@ void SkeletonConfigDialog::updatePreviewLines()
             }
         }
     } else {
-        // 更新现有连线位置
         for (int i = 0; i < bones.size() && i < m_previewLines.size(); ++i) {
             const auto& bone = bones[i];
             if (bone.from < m_previewPositions.size() && bone.to < m_previewPositions.size()) {
@@ -527,12 +517,20 @@ void SkeletonConfigDialog::updatePreviewLines()
     }
 }
 
+void SkeletonConfigDialog::updatePreviewLabels()
+{
+    // 更新标签位置跟随关键点
+    for (int i = 0; i < m_previewLabels.size() && i < m_previewPositions.size(); ++i) {
+        const QPointF& pos = m_previewPositions[i];
+        m_previewLabels[i]->setPos(pos.x() + 8, pos.y() - 10);
+    }
+}
+
 QVector<QPointF> SkeletonConfigDialog::getDefaultPositions(int count) const
 {
     QVector<QPointF> positions;
 
     if (count == 17) {
-        // COCO 17 标准人形布局
         positions = {
             {100, 20},   // 0: nose
             {90, 10},    // 1: left_eye
@@ -553,7 +551,6 @@ QVector<QPointF> SkeletonConfigDialog::getDefaultPositions(int count) const
             {130, 230},  // 16: right_ankle
         };
     } else {
-        // 通用圆形布局
         double centerX = 100;
         double centerY = 120;
         double radius = 80;
