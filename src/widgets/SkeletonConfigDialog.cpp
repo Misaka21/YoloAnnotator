@@ -191,8 +191,20 @@ void SkeletonConfigDialog::onLoadPreset()
 {
     int index = m_presetCombo->currentIndex();
     if (index == 0) {
-        m_config = SkeletonConfig();
+        // 自定义 - 从项目加载
+        if (m_projectPath.isEmpty() || !QFile::exists(m_projectPath)) {
+            QMessageBox::information(this, "提示", "未找到项目文件，请先打开项目");
+            return;
+        }
+        DatasetConfig projectConfig;
+        if (projectConfig.loadYAML(m_projectPath)) {
+            m_config = projectConfig.skeletonConfig();
+        } else {
+            QMessageBox::warning(this, "错误", "无法读取项目配置");
+            return;
+        }
     } else if (index == 1) {
+        // COCO 17
         m_config = SkeletonConfig::createCOCO17();
     }
     m_previewPositions.clear();
