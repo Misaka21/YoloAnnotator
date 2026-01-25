@@ -187,19 +187,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda124-windows-v1
+          key: opencv-4.10.0-cuda124-windows-v1
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         run: |
-          curl -L -o opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
-          curl -L -o opencv_contrib.zip "https://github.com/opencv/opencv_contrib/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
+          # 使用 OpenCV 4.10.0 以获得更好的 CUDA 12.x 兼容性
+          curl -L -o opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/4.10.0.zip"
+          curl -L -o opencv_contrib.zip "https://github.com/opencv/opencv_contrib/archive/refs/tags/4.10.0.zip"
           Expand-Archive opencv.zip -DestinationPath C:\
           Expand-Archive opencv_contrib.zip -DestinationPath C:\
-          cmake -B C:\opencv-build -S C:\opencv-${{ env.OPENCV_VERSION }} -G "Visual Studio 17 2022" -A x64 `
+          cmake -B C:\opencv-build -S C:\opencv-4.10.0 -G "Visual Studio 17 2022" -A x64 `
             -DCMAKE_BUILD_TYPE=Release `
             -DCMAKE_INSTALL_PREFIX=C:\opencv-install `
-            -DOPENCV_EXTRA_MODULES_PATH=C:\opencv_contrib-${{ env.OPENCV_VERSION }}\modules `
+            -DOPENCV_EXTRA_MODULES_PATH=C:\opencv_contrib-4.10.0\modules `
             -DBUILD_SHARED_LIBS=ON `
             -DBUILD_opencv_world=ON `
             -DBUILD_TESTS=OFF `
@@ -459,19 +460,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda124-linux-v1
+          key: opencv-4.10.0-cuda124-linux-v1
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         run: |
-          wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
-          wget -O opencv_contrib.zip "https://github.com/opencv/opencv_contrib/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
+          # 使用 OpenCV 4.10.0 以获得更好的 CUDA 12.x 兼容性
+          wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/4.10.0.zip"
+          wget -O opencv_contrib.zip "https://github.com/opencv/opencv_contrib/archive/refs/tags/4.10.0.zip"
           unzip opencv.zip
           unzip opencv_contrib.zip
-          cmake -B opencv-build -S opencv-${{ env.OPENCV_VERSION }} \
+          cmake -B opencv-build -S opencv-4.10.0 \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/opt/opencv-install \
-            -DOPENCV_EXTRA_MODULES_PATH=opencv_contrib-${{ env.OPENCV_VERSION }}/modules \
+            -DOPENCV_EXTRA_MODULES_PATH=opencv_contrib-4.10.0/modules \
             -DBUILD_SHARED_LIBS=ON \
             -DBUILD_opencv_world=ON \
             -DBUILD_TESTS=OFF \
