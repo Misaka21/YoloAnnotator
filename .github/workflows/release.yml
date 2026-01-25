@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-windows-v2
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-windows-v3
 
       - name: Build OpenCV with OpenVINO
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -114,7 +114,7 @@ jobs:
         shell: cmd
         run: |
           call C:\openvino\setupvars.bat
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install\lib
 
       - name: Build
         shell: cmd
@@ -129,7 +129,7 @@ jobs:
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
           # OpenCV DLLs
-          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || true
+          cp C:\opencv-install\bin\*.dll . 2>$null || true
           # OpenVINO DLLs
           cp C:\openvino\runtime\bin\intel64\Release\*.dll . 2>$null || true
           cp C:\openvino\runtime\3rdparty\tbb\bin\*.dll . 2>$null || true
@@ -187,7 +187,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-windows-v3
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-windows-v4
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -214,7 +214,7 @@ jobs:
           cmake --install C:\opencv-build --config Release
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install\lib"
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -226,7 +226,7 @@ jobs:
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
           # OpenCV DLLs
-          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || true
+          cp C:\opencv-install\bin\*.dll . 2>$null || true
           # CUDA Runtime DLLs
           cp "$env:CUDA_PATH\bin\cudart64_*.dll" . 2>$null || true
           cp "$env:CUDA_PATH\bin\cublas64_*.dll" . 2>$null || true
@@ -336,19 +336,18 @@ jobs:
           sudo gpg --dearmor -o /usr/share/keyrings/intel-openvino.gpg GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
           echo "deb [signed-by=/usr/share/keyrings/intel-openvino.gpg] https://apt.repos.intel.com/openvino/2023 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/openvino.list
           sudo apt-get update
-          sudo apt-get install -y openvino-2023.3.0
+          sudo apt-get install -y openvino-dev-2023.3.0
 
       - name: Cache OpenCV Build
         id: cache-opencv
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-linux-v2
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-linux-v4
 
       - name: Build OpenCV with OpenVINO
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         run: |
-          source /opt/intel/openvino_2023.3.0/setupvars.sh
           wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
           unzip opencv.zip
           cmake -B opencv-build -S opencv-${{ env.OPENCV_VERSION }} \
@@ -365,14 +364,10 @@ jobs:
           sudo cmake --install opencv-build
 
       - name: Configure CMake
-        run: |
-          source /opt/intel/openvino_2023.3.0/setupvars.sh
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
 
       - name: Build
-        run: |
-          source /opt/intel/openvino_2023.3.0/setupvars.sh
-          cmake --build build --parallel $(nproc)
+        run: cmake --build build --parallel $(nproc)
 
       - name: Package AppImage
         run: |
@@ -385,9 +380,9 @@ jobs:
 
           cp build/YoloAnnotator AppDir/usr/bin/
 
-          # Copy OpenVINO libs (OpenVINO 2023.3.0 安装路径)
-          cp /opt/intel/openvino_2023.3.0/runtime/lib/intel64/*.so* AppDir/usr/lib/ 2>/dev/null || true
-          cp /opt/intel/openvino_2023.3.0/runtime/3rdparty/tbb/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
+          # Copy OpenVINO libs (apt 安装到系统路径)
+          cp /usr/lib/x86_64-linux-gnu/libopenvino*.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /usr/lib/x86_64-linux-gnu/libtbb*.so* AppDir/usr/lib/ 2>/dev/null || true
 
           # Copy OpenCV libs
           cp /opt/opencv-install/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
@@ -420,6 +415,16 @@ jobs:
     continue-on-error: true
     steps:
       - uses: actions/checkout@v4
+
+      - name: Free Disk Space
+        run: |
+          # 清理磁盘空间以确保 CUDA + OpenCV 构建有足够空间
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo apt-get clean
+          df -h
 
       - name: Install Dependencies
         run: |
@@ -454,7 +459,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-linux-v2
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-linux-v3
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
