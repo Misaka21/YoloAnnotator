@@ -76,43 +76,51 @@ jobs:
 
       - name: Download OpenVINO
         run: |
-          curl -L -o openvino.zip "https://storage.openvinotoolkit.org/repositories/openvino/packages/2024.0/windows/w_openvino_toolkit_windows_2024.0.0.14509.34caeefd078_x86_64.zip"
+          # 使用 OpenVINO 2023.3 以保持与 OpenCV 4.9.0 的兼容性 (2024.0 弃用了 ngraph 头文件)
+          curl -L -o openvino.zip "https://storage.openvinotoolkit.org/repositories/openvino/packages/2023.3/windows/w_openvino_toolkit_windows_2023.3.0.13775.ceeafaf64f3_x86_64.zip"
           Expand-Archive openvino.zip -DestinationPath C:\
-          Rename-Item "C:\w_openvino_toolkit_windows_2024.0.0.14509.34caeefd078_x86_64" "C:\openvino"
+          Rename-Item "C:\w_openvino_toolkit_windows_2023.3.0.13775.ceeafaf64f3_x86_64" "C:\openvino"
 
       - name: Cache OpenCV Build
         id: cache-opencv
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-openvino-windows
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-windows-v2
 
       - name: Build OpenCV with OpenVINO
         if: steps.cache-opencv.outputs.cache-hit != 'true'
+        shell: cmd
         run: |
+          call C:\openvino\setupvars.bat
           curl -L -o opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
-          Expand-Archive opencv.zip -DestinationPath C:\
-          cmake -B C:\opencv-build -S C:\opencv-${{ env.OPENCV_VERSION }} -G "Visual Studio 17 2022" -A x64 `
-            -DCMAKE_BUILD_TYPE=Release `
-            -DCMAKE_INSTALL_PREFIX=C:\opencv-install `
-            -DBUILD_SHARED_LIBS=ON `
-            -DBUILD_opencv_world=ON `
-            -DBUILD_TESTS=OFF `
-            -DBUILD_PERF_TESTS=OFF `
-            -DBUILD_EXAMPLES=OFF `
-            -DBUILD_opencv_python3=OFF `
-            -DWITH_OPENVINO=ON `
-            -DOpenVINO_DIR="C:\openvino\runtime\cmake"
+          powershell Expand-Archive opencv.zip -DestinationPath C:\
+          cmake -B C:\opencv-build -S C:\opencv-${{ env.OPENCV_VERSION }} -G "Visual Studio 17 2022" -A x64 ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DCMAKE_INSTALL_PREFIX=C:\opencv-install ^
+            -DBUILD_SHARED_LIBS=ON ^
+            -DBUILD_opencv_world=ON ^
+            -DBUILD_TESTS=OFF ^
+            -DBUILD_PERF_TESTS=OFF ^
+            -DBUILD_EXAMPLES=OFF ^
+            -DBUILD_opencv_python3=OFF ^
+            -DWITH_OPENVINO=ON ^
+            -DOpenVINO_DIR=C:\openvino\runtime\cmake ^
+            -DInferenceEngine_DIR=C:\openvino\runtime\cmake
           cmake --build C:\opencv-build --config Release --parallel 4
           cmake --install C:\opencv-build --config Release
 
       - name: Configure CMake
+        shell: cmd
         run: |
-          $env:OpenVINO_DIR = "C:\openvino\runtime\cmake"
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install"
+          call C:\openvino\setupvars.bat
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install
 
       - name: Build
-        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+        shell: cmd
+        run: |
+          call C:\openvino\setupvars.bat
+          cmake --build build --config ${{ env.BUILD_TYPE }}
 
       - name: Package
         run: |
@@ -323,25 +331,26 @@ jobs:
 
       - name: Install OpenVINO
         run: |
+          # 使用 OpenVINO 2023 以保持与 OpenCV 4.9.0 的兼容性
           wget https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
           sudo gpg --dearmor -o /usr/share/keyrings/intel-openvino.gpg GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB
-          echo "deb [signed-by=/usr/share/keyrings/intel-openvino.gpg] https://apt.repos.intel.com/openvino/2024 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/openvino.list
+          echo "deb [signed-by=/usr/share/keyrings/intel-openvino.gpg] https://apt.repos.intel.com/openvino/2023 ubuntu22 main" | sudo tee /etc/apt/sources.list.d/openvino.list
           sudo apt-get update
-          sudo apt-get install -y openvino
+          sudo apt-get install -y openvino-2023.3.0
 
       - name: Cache OpenCV Build
         id: cache-opencv
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-openvino-linux
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-linux-v2
 
       - name: Build OpenCV with OpenVINO
         if: steps.cache-opencv.outputs.cache-hit != 'true'
         run: |
+          source /opt/intel/openvino_2023.3.0/setupvars.sh
           wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/${{ env.OPENCV_VERSION }}.zip"
           unzip opencv.zip
-          source /opt/intel/openvino/setupvars.sh
           cmake -B opencv-build -S opencv-${{ env.OPENCV_VERSION }} \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_INSTALL_PREFIX=/opt/opencv-install \
@@ -357,11 +366,13 @@ jobs:
 
       - name: Configure CMake
         run: |
-          source /opt/intel/openvino/setupvars.sh
+          source /opt/intel/openvino_2023.3.0/setupvars.sh
           cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
 
       - name: Build
-        run: cmake --build build --parallel $(nproc)
+        run: |
+          source /opt/intel/openvino_2023.3.0/setupvars.sh
+          cmake --build build --parallel $(nproc)
 
       - name: Package AppImage
         run: |
@@ -374,9 +385,9 @@ jobs:
 
           cp build/YoloAnnotator AppDir/usr/bin/
 
-          # Copy OpenVINO libs
-          cp /opt/intel/openvino/runtime/lib/intel64/*.so* AppDir/usr/lib/ 2>/dev/null || true
-          cp /opt/intel/openvino/runtime/3rdparty/tbb/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
+          # Copy OpenVINO libs (OpenVINO 2023.3.0 安装路径)
+          cp /opt/intel/openvino_2023.3.0/runtime/lib/intel64/*.so* AppDir/usr/lib/ 2>/dev/null || true
+          cp /opt/intel/openvino_2023.3.0/runtime/3rdparty/tbb/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
 
           # Copy OpenCV libs
           cp /opt/opencv-install/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
