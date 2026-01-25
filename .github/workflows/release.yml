@@ -166,7 +166,7 @@ jobs:
         with:
           cuda: '11.8.0'
           method: 'network'
-          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cufft", "cufft_dev", "curand", "curand_dev", "cusolver", "cusolver_dev", "cusparse", "cusparse_dev", "visual_studio_integration"]'
+          sub-packages: '["nvcc", "cudart", "cublas", "cublas_dev", "cufft", "cufft_dev", "curand", "curand_dev", "cusolver", "cusolver_dev", "cusparse", "cusparse_dev", "npp", "npp_dev", "visual_studio_integration"]'
 
       - name: Install cuDNN via Conda
         run: |
@@ -187,7 +187,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-windows-v2
+          key: opencv-${{ env.OPENCV_VERSION }}-cuda118-windows-v3
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
