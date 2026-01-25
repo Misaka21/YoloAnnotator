@@ -114,7 +114,7 @@ jobs:
         shell: cmd
         run: |
           call C:\openvino\setupvars.bat
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install\lib
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install\lib -DWITH_OPENVINO=ON
 
       - name: Build
         shell: cmd
@@ -214,7 +214,7 @@ jobs:
           cmake --install C:\opencv-build --config Release
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install\lib"
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install\lib" -DWITH_CUDA=ON
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -364,7 +364,7 @@ jobs:
           sudo cmake --install opencv-build
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4 -DWITH_OPENVINO=ON
 
       - name: Build
         run: cmake --build build --parallel $(nproc)
@@ -486,7 +486,7 @@ jobs:
           sudo cmake --install opencv-build
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4 -DWITH_CUDA=ON
 
       - name: Build
         run: cmake --build build --parallel $(nproc)
