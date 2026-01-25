@@ -25,6 +25,7 @@ public:
     // 获取配置结果
     DatasetConfig config() const { return m_config; }
     QString projectSavePath() const { return m_savePathEdit->text(); }
+    QString imageFolderPath() const { return m_imagePathEdit->text(); }
 
 private slots:
     void onBrowseImages();
@@ -46,6 +47,8 @@ private:
 
     QSpinBox* m_keypointSpinBox;
     QLabel* m_keypointLabel;
+    QComboBox* m_kptDimCombo;
+    QLabel* m_kptDimLabel;
 
     QLineEdit* m_savePathEdit;
     QPushButton* m_browseSaveBtn;

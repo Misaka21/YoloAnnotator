@@ -64,6 +64,20 @@ void NewProjectDialog::setupUI() {
     kpLayout->addStretch();
     taskLayout->addLayout(kpLayout);
 
+    // 关键点维度（仅 Pose 模式）
+    QHBoxLayout* dimLayout = new QHBoxLayout();
+    m_kptDimLabel = new QLabel("关键点格式:");
+    m_kptDimCombo = new QComboBox();
+    m_kptDimCombo->addItem("x, y, visibility (标准格式)", 3);
+    m_kptDimCombo->addItem("x, y (无可见性)", 2);
+    m_kptDimCombo->setEnabled(false);
+    m_kptDimLabel->setEnabled(false);
+
+    dimLayout->addWidget(m_kptDimLabel);
+    dimLayout->addWidget(m_kptDimCombo);
+    dimLayout->addStretch();
+    taskLayout->addLayout(dimLayout);
+
     mainLayout->addWidget(taskGroup);
 
     // 类别信息
@@ -140,6 +154,8 @@ void NewProjectDialog::onTaskTypeChanged() {
     bool isPose = m_poseRadio->isChecked();
     m_keypointLabel->setEnabled(isPose);
     m_keypointSpinBox->setEnabled(isPose);
+    m_kptDimLabel->setEnabled(isPose);
+    m_kptDimCombo->setEnabled(isPose);
 }
 
 void NewProjectDialog::onAccept() {
@@ -186,7 +202,8 @@ void NewProjectDialog::onAccept() {
     if (m_poseRadio->isChecked()) {
         m_config.setTaskType(DatasetConfig::Pose);
         int kpCount = m_keypointSpinBox->value();
-        m_config.setKptShape(kpCount, 3);
+        int kpDim = m_kptDimCombo->currentData().toInt();
+        m_config.setKptShape(kpCount, kpDim);
         m_config.setSkeletonConfig(SkeletonConfig::createCustom(kpCount));
     } else {
         m_config.setTaskType(DatasetConfig::Detection);

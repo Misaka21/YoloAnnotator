@@ -170,7 +170,7 @@ private:
     QString getAnnotationPath(const QString& imagePath);  // 获取标注文件路径
 
     // 项目加载辅助
-    void loadProject(const DatasetConfig& config);
+    void loadProject(const DatasetConfig& config, const QString& knownImagePath = QString());
     void loadImagesFromPath(const QString& imagePath);
     QString findYamlInFolder(const QString& folder);
     QString findClassesTxtInFolder(const QString& folder);

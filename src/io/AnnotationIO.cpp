@@ -45,9 +45,28 @@ Annotation AnnotationIO::parseLine(const QString& line) {
     );
     ann.setBoundingBox(bbox);
 
-    // 自动检测该行的关键点数量
+    // 自动检测该行的关键点数量和维度
     int extraValues = parts.size() - 5;
-    int lineKpCount = (extraValues >= 3 && extraValues % 3 == 0) ? extraValues / 3 : 0;
+    int lineKpCount = 0;
+    int lineDim = m_kptDim;  // 使用设置的维度
+
+    // 优先使用设置的维度
+    if (m_kptDim == 2 && extraValues >= 2 && extraValues % 2 == 0) {
+        lineKpCount = extraValues / 2;
+        lineDim = 2;
+    } else if (m_kptDim == 3 && extraValues >= 3 && extraValues % 3 == 0) {
+        lineKpCount = extraValues / 3;
+        lineDim = 3;
+    } else {
+        // 自动检测: 优先检测3值格式，然后2值格式
+        if (extraValues >= 3 && extraValues % 3 == 0) {
+            lineKpCount = extraValues / 3;
+            lineDim = 3;
+        } else if (extraValues >= 2 && extraValues % 2 == 0) {
+            lineKpCount = extraValues / 2;
+            lineDim = 2;
+        }
+    }
 
     // 解析关键点（按该行实际数量）
     if (lineKpCount > 0) {
@@ -55,10 +74,10 @@ Annotation AnnotationIO::parseLine(const QString& line) {
         int kpStartIdx = 5;
 
         for (int i = 0; i < lineKpCount; ++i) {
-            int idx = kpStartIdx + i * 3;
+            int idx = kpStartIdx + i * lineDim;
             double kpX = parts[idx].toDouble();
             double kpY = parts[idx + 1].toDouble();
-            int kpVis = parts[idx + 2].toInt();
+            int kpVis = (lineDim >= 3) ? parts[idx + 2].toInt() : 2;  // 无visibility时默认为2(可见)
 
             Keypoint kp(kpX, kpY, kpVis);
 
@@ -113,8 +132,10 @@ QString AnnotationIO::formatLine(const Annotation& ann) {
         for (const Keypoint& kp : ann.keypoints()) {
             if (kp.isValid()) {
                 out << " " << kp.x()
-                    << " " << kp.y()
-                    << " " << kp.visibility();
+                    << " " << kp.y();
+                if (m_kptDim >= 3) {
+                    out << " " << kp.visibility();
+                }
             }
         }
     }
@@ -122,15 +143,17 @@ QString AnnotationIO::formatLine(const Annotation& ann) {
     return line;
 }
 
-AnnotationIO::Format AnnotationIO::detectFormat(const QString& txtPath, int& outKeypointCount) {
+AnnotationIO::Format AnnotationIO::detectFormat(const QString& txtPath, int& outKeypointCount, int& outKptDim) {
     QFile file(txtPath);
     if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
         outKeypointCount = 0;
+        outKptDim = 3;
         return Detection;
     }
 
-    // 扫描所有行，找最大关键点数
+    // 扫描所有行，找最大关键点数和维度
     int maxKp = 0;
+    int detectedDim = 3;
     QTextStream in(&file);
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
@@ -139,14 +162,27 @@ AnnotationIO::Format AnnotationIO::detectFormat(const QString& txtPath, int& out
         QStringList parts = line.split(' ', Qt::SkipEmptyParts);
         if (parts.size() > 5) {
             int extraValues = parts.size() - 5;
+            // 优先检测3值格式
             if (extraValues % 3 == 0) {
                 int kp = extraValues / 3;
-                if (kp > maxKp) maxKp = kp;
+                if (kp > maxKp) {
+                    maxKp = kp;
+                    detectedDim = 3;
+                }
+            }
+            // 如果3值格式不匹配，尝试2值格式
+            else if (extraValues % 2 == 0) {
+                int kp = extraValues / 2;
+                if (kp > maxKp) {
+                    maxKp = kp;
+                    detectedDim = 2;
+                }
             }
         }
     }
 
     outKeypointCount = maxKp;
+    outKptDim = detectedDim;
     return (maxKp > 0) ? Pose : Detection;
 }
 

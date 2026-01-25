@@ -465,9 +465,9 @@ void MainWindow::loadImage(int index) {
     m_canvasView->setImage(imagePath);
     QString txtPath = getAnnotationPath(imagePath);
     if (QFile::exists(txtPath)) {
-        int kpCount = 0;
-        auto format = AnnotationIO::detectFormat(txtPath, kpCount);
-        m_annotationIO.setFormat(format); m_annotationIO.setKeypointCount(kpCount);
+        int kpCount = 0, kpDim = 3;
+        auto format = AnnotationIO::detectFormat(txtPath, kpCount, kpDim);
+        m_annotationIO.setFormat(format); m_annotationIO.setKeypointCount(kpCount); m_annotationIO.setKptDim(kpDim);
         m_formatCombo->setCurrentIndex(format == AnnotationIO::Detection ? 0 : 1);
         m_canvasView->setAnnotations(m_annotationIO.load(txtPath));
     } else m_canvasView->clearAnnotations();
@@ -956,6 +956,7 @@ void MainWindow::onCreateProjectFromTxt() {
 
     DatasetConfig config = dialog.config();
     QString savePath = dialog.projectSavePath();
+    QString imagePath = dialog.imageFolderPath();
 
     // 保存 YAML 文件
     if (!config.saveYAML(savePath)) {
@@ -963,14 +964,14 @@ void MainWindow::onCreateProjectFromTxt() {
         return;
     }
 
-    // 加载项目
+    // 加载项目（使用已知的图片路径）
     config.loadYAML(savePath);  // 重新加载以获取正确的路径
-    loadProject(config);
+    loadProject(config, imagePath);
 
     QMessageBox::information(this, "成功", "项目已创建:\n" + savePath);
 }
 
-void MainWindow::loadProject(const DatasetConfig& config) {
+void MainWindow::loadProject(const DatasetConfig& config, const QString& knownImagePath) {
     m_datasetConfig = config;
     m_classesLoader.setClassNames(config.classNames());
     m_classesLocked = true;
@@ -981,19 +982,22 @@ void MainWindow::loadProject(const DatasetConfig& config) {
         m_canvasView->setSkeletonConfig(config.skeletonConfig());
         m_annotationIO.setFormat(AnnotationIO::Pose);
         m_annotationIO.setKeypointCount(config.keypointCount());
+        m_annotationIO.setKptDim(config.keypointDim());
     } else {
         m_formatCombo->setCurrentIndex(0);
         m_annotationIO.setFormat(AnnotationIO::Detection);
     }
 
-    // 加载图片
-    QString imagePath;
-    if (!config.resolvedTrainPath().isEmpty() && QDir(config.resolvedTrainPath()).exists()) {
-        imagePath = config.resolvedTrainPath();
-    } else if (!config.resolvedValPath().isEmpty() && QDir(config.resolvedValPath()).exists()) {
-        imagePath = config.resolvedValPath();
-    } else if (!config.datasetPath().isEmpty() && QDir(config.datasetPath()).exists()) {
-        imagePath = config.datasetPath();
+    // 加载图片 - 优先使用已知路径
+    QString imagePath = knownImagePath;
+    if (imagePath.isEmpty()) {
+        if (!config.resolvedTrainPath().isEmpty() && QDir(config.resolvedTrainPath()).exists()) {
+            imagePath = config.resolvedTrainPath();
+        } else if (!config.resolvedValPath().isEmpty() && QDir(config.resolvedValPath()).exists()) {
+            imagePath = config.resolvedValPath();
+        } else if (!config.datasetPath().isEmpty() && QDir(config.datasetPath()).exists()) {
+            imagePath = config.datasetPath();
+        }
     }
 
     if (imagePath.isEmpty()) {

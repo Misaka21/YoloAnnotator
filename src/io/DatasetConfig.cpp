@@ -15,8 +15,15 @@ bool DatasetConfig::loadYAML(const QString& path) {
         return false;
     }
 
+    // 使用 QFile 读取以正确处理中文路径
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        return false;
+    }
+    QByteArray content = file.readAll();
+    file.close();
+
     try {
-        YAML::Node root = YAML::LoadFile(path.toStdString());
+        YAML::Node root = YAML::Load(content.toStdString());
 
         m_projectPath = path;
 
