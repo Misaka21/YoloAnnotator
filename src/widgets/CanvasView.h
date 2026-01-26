@@ -140,6 +140,7 @@ private:
     // 平移状态
     bool m_panning = false;
     QPoint m_panStart;
+    QPoint m_rightClickPos;  // 右键按下的初始位置，用于区分点击和拖动
 
     // 拖动状态
     bool m_dragging = false;

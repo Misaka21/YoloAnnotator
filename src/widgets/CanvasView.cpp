@@ -300,6 +300,7 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
         // 右键平移
         m_panning = true;
         m_panStart = event->pos();
+        m_rightClickPos = event->pos();  // 记录初始位置用于区分点击和拖动
         setCursor(Qt::ClosedHandCursor);
     } else if (event->button() == Qt::MiddleButton) {
         // 中键拖动整个标注
@@ -427,6 +428,16 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
+    // 检查是否是右键拖动（平移）而非单击
+    // 如果移动距离超过阈值，不弹出菜单
+    QPoint delta = event->pos() - m_rightClickPos;
+    if (delta.manhattanLength() > 5) {
+        // 是拖动，不是单击，重置状态并返回
+        resetOperationState();
+        event->accept();
+        return;
+    }
+
     // 重置操作状态，因为右键菜单会捕获鼠标释放事件
     resetOperationState();
 
