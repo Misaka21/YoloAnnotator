@@ -152,11 +152,17 @@ void HeatmapWidget::paintEvent(QPaintEvent*) {
     const int marginTop = 10;
     const int marginBottom = 40;
 
-    int chartWidth = width() - marginLeft - marginRight;
-    int chartHeight = height() - marginTop - marginBottom;
+    // 使用正方形区域
+    int availableWidth = width() - marginLeft - marginRight;
+    int availableHeight = height() - marginTop - marginBottom;
+    int chartSize = qMin(availableWidth, availableHeight);
+
+    // 居中显示
+    int offsetX = marginLeft + (availableWidth - chartSize) / 2;
+    int offsetY = marginTop + (availableHeight - chartSize) / 2;
 
     // 绘制背景
-    p.fillRect(marginLeft, marginTop, chartWidth, chartHeight, Qt::white);
+    p.fillRect(offsetX, offsetY, chartSize, chartSize, Qt::white);
 
     if (m_points.isEmpty()) {
         p.drawText(rect(), Qt::AlignCenter, "No data");
@@ -176,53 +182,72 @@ void HeatmapWidget::paintEvent(QPaintEvent*) {
 
     if (maxDensity == 0) maxDensity = 1;
 
-    // 绘制热力图（蓝色渐变）
-    double cellW = double(chartWidth) / GRID_SIZE;
-    double cellH = double(chartHeight) / GRID_SIZE;
+    // 创建热力图图像
+    QImage heatmap(GRID_SIZE, GRID_SIZE, QImage::Format_ARGB32);
+    heatmap.fill(Qt::white);
+
+    double sqrtMax = std::sqrt(maxDensity);
 
     for (int gy = 0; gy < GRID_SIZE; ++gy) {
         for (int gx = 0; gx < GRID_SIZE; ++gx) {
             if (grid[gy][gx] > 0) {
-                double intensity = double(grid[gy][gx]) / maxDensity;
-                // 蓝色渐变：从浅蓝到深蓝
-                int alpha = int(50 + 205 * intensity);
-                QColor color(100, 150, 255, alpha);
+                // 使用平方根缩放，增强低密度区域可见度
+                double intensity = std::sqrt(grid[gy][gx]) / sqrtMax;
 
-                double x = marginLeft + gx * cellW;
-                double y = marginTop + (GRID_SIZE - 1 - gy) * cellH;  // Y轴反转：0在底部，1在顶部
-                p.fillRect(QRectF(x, y, cellW + 1, cellH + 1), color);
+                // 白色到深蓝渐变 (加深版)
+                // 白色 (255,255,255) -> 浅蓝 (180,200,255) -> 深蓝 (0,30,80)
+                int r, g, b;
+                if (intensity < 0.5) {
+                    double t = intensity * 2;  // 0-1
+                    r = int(255 - 75 * t);     // 255 -> 180
+                    g = int(255 - 55 * t);     // 255 -> 200
+                    b = 255;                    // 保持255
+                } else {
+                    double t = (intensity - 0.5) * 2;  // 0-1
+                    r = int(180 - 180 * t);    // 180 -> 0
+                    g = int(200 - 170 * t);    // 200 -> 30
+                    b = int(255 - 175 * t);    // 255 -> 80
+                }
+
+                // Y轴反转：gy=0 对应图像底部
+                heatmap.setPixelColor(gx, GRID_SIZE - 1 - gy, QColor(r, g, b));
             }
         }
     }
 
+    // 缩放并绘制热力图（使用最近邻插值保持方块清晰）
+    QRect chartRect(offsetX, offsetY, chartSize, chartSize);
+    p.drawImage(chartRect, heatmap.scaled(chartSize, chartSize, Qt::IgnoreAspectRatio, Qt::FastTransformation));
+
     // 绘制边框
-    p.setPen(Qt::black);
+    p.setPen(QColor(200, 200, 200));
     p.setBrush(Qt::NoBrush);
-    p.drawRect(marginLeft, marginTop, chartWidth, chartHeight);
+    p.drawRect(offsetX, offsetY, chartSize, chartSize);
 
     // 坐标轴标签
+    p.setPen(Qt::black);
     p.setFont(QFont("Segoe UI", 8));
 
     // X轴
     for (int i = 0; i <= 4; ++i) {
         double val = i * 0.25;
-        int x = marginLeft + chartWidth * i / 4;
-        p.drawText(QRect(x - 20, height() - marginBottom + 5, 40, 15),
+        int x = offsetX + chartSize * i / 4;
+        p.drawText(QRect(x - 20, offsetY + chartSize + 5, 40, 15),
                    Qt::AlignCenter, QString::number(val, 'f', 1));
     }
-    p.drawText(QRect(marginLeft, height() - 20, chartWidth, 20),
+    p.drawText(QRect(offsetX, offsetY + chartSize + 20, chartSize, 20),
                Qt::AlignCenter, m_xLabel);
 
     // Y轴
     for (int i = 0; i <= 4; ++i) {
         double val = i * 0.25;
-        int y = marginTop + chartHeight - chartHeight * i / 4;
-        p.drawText(QRect(0, y - 8, marginLeft - 5, 16),
+        int y = offsetY + chartSize - chartSize * i / 4;
+        p.drawText(QRect(0, y - 8, offsetX - 5, 16),
                    Qt::AlignRight | Qt::AlignVCenter, QString::number(val, 'f', 1));
     }
 
     p.save();
-    p.translate(12, marginTop + chartHeight / 2);
+    p.translate(12, offsetY + chartSize / 2);
     p.rotate(-90);
     p.drawText(QRect(-40, -10, 80, 20), Qt::AlignCenter, m_yLabel);
     p.restore();
