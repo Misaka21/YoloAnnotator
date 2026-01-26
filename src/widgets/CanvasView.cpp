@@ -220,8 +220,10 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
             // 开始绘制边界框
             m_drawing = true;
             m_drawStart = scenePos;
+            QPen drawPen(Qt::green, 2);
+            drawPen.setCosmetic(true);  // 固定屏幕宽度，不随缩放变化
             m_tempRect = m_scene->addRect(QRectF(scenePos, scenePos),
-                                          QPen(Qt::green, 2), QBrush(QColor(0, 255, 0, 50)));
+                                          drawPen, QBrush(QColor(0, 255, 0, 50)));
             m_tempRect->setZValue(100);
         } else if (m_mode == EditMode::Select) {
             // 优先检查当前选中标注的角点/关键点

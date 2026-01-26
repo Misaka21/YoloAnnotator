@@ -189,7 +189,7 @@ void HeatmapWidget::paintEvent(QPaintEvent*) {
                 QColor color(100, 150, 255, alpha);
 
                 double x = marginLeft + gx * cellW;
-                double y = marginTop + gy * cellH;
+                double y = marginTop + (GRID_SIZE - 1 - gy) * cellH;  // Y轴反转：0在底部，1在顶部
                 p.fillRect(QRectF(x, y, cellW + 1, cellH + 1), color);
             }
         }
@@ -282,22 +282,29 @@ void BoxOverlayWidget::paintEvent(QPaintEvent*) {
         return;
     }
 
-    // 绘制所有边界框
+    // 图表中心点
+    double chartCenterX = offsetX + chartSize / 2.0;
+    double chartCenterY = offsetY + chartSize / 2.0;
+
+    // 绘制所有边界框（居中叠加，只绘制轮廓）
     for (int i = 0; i < m_boxes.size(); ++i) {
         const QRectF& box = m_boxes[i];
         int classId = (i < m_classIds.size()) ? m_classIds[i] : 0;
         QString className = (classId < m_classNames.size()) ? m_classNames[classId] : "";
 
         QColor color = getColorForClass(classId, className);
+        color.setAlpha(150);  // 半透明轮廓
 
-        // 转换到绘制坐标
-        double x = offsetX + box.x() * chartSize;
-        double y = offsetY + box.y() * chartSize;
+        // 边界框尺寸（归一化 -> 像素）
         double w = box.width() * chartSize;
         double h = box.height() * chartSize;
 
-        p.setPen(QPen(color.darker(120), 1));
-        p.setBrush(QBrush(color));
+        // 居中绘制：所有框的中心对齐到图表中心
+        double x = chartCenterX - w / 2.0;
+        double y = chartCenterY - h / 2.0;
+
+        p.setPen(QPen(color, 1));
+        p.setBrush(Qt::NoBrush);  // 只绘制轮廓
         p.drawRect(QRectF(x, y, w, h));
     }
 }
