@@ -86,7 +86,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-windows-v3
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-windows-v4
 
       - name: Build OpenCV with OpenVINO
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -110,11 +110,21 @@ jobs:
           cmake --build C:\opencv-build --config Release --parallel 4
           cmake --install C:\opencv-build --config Release
 
+      - name: Debug OpenCV Install
+        shell: pwsh
+        run: |
+          Write-Host "=== OpenCV Install Directory Structure ==="
+          Get-ChildItem -Path C:\opencv-install -Recurse -Depth 3 | Select-Object FullName
+          Write-Host "=== Looking for OpenCVConfig.cmake ==="
+          Get-ChildItem -Path C:\opencv-install -Recurse -Filter "OpenCVConfig.cmake" | Select-Object FullName
+          Write-Host "=== Looking for DLLs ==="
+          Get-ChildItem -Path C:\opencv-install -Recurse -Filter "*.dll" | Select-Object FullName
+
       - name: Configure CMake
         shell: cmd
         run: |
           call C:\openvino\setupvars.bat
-          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install -DWITH_OPENVINO=ON
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=C:\opencv-install\lib\cmake\opencv4 -DWITH_OPENVINO=ON
 
       - name: Build
         shell: cmd
@@ -129,7 +139,7 @@ jobs:
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
           # OpenCV DLLs
-          cp C:\opencv-install\bin\*.dll . 2>$null || true
+          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || cp C:\opencv-install\bin\*.dll . 2>$null || true
           # OpenVINO DLLs
           cp C:\openvino\runtime\bin\intel64\Release\*.dll . 2>$null || true
           cp C:\openvino\runtime\3rdparty\tbb\bin\*.dll . 2>$null || true
@@ -187,7 +197,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\opencv-install
-          key: opencv-4.10.0-cuda124-windows-v2
+          key: opencv-4.10.0-cuda124-windows-v3
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -215,8 +225,18 @@ jobs:
           cmake --build C:\opencv-build --config Release --parallel 4
           cmake --install C:\opencv-build --config Release
 
+      - name: Debug OpenCV Install
+        shell: pwsh
+        run: |
+          Write-Host "=== OpenCV Install Directory Structure ==="
+          Get-ChildItem -Path C:\opencv-install -Recurse -Depth 3 | Select-Object FullName
+          Write-Host "=== Looking for OpenCVConfig.cmake ==="
+          Get-ChildItem -Path C:\opencv-install -Recurse -Filter "OpenCVConfig.cmake" | Select-Object FullName
+          Write-Host "=== Looking for DLLs ==="
+          Get-ChildItem -Path C:\opencv-install -Recurse -Filter "*.dll" | Select-Object FullName
+
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install" -DWITH_CUDA=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install\lib\cmake\opencv4" -DWITH_CUDA=ON
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
@@ -228,7 +248,7 @@ jobs:
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
           # OpenCV DLLs
-          cp C:\opencv-install\bin\*.dll . 2>$null || true
+          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || cp C:\opencv-install\bin\*.dll . 2>$null || true
           # CUDA Runtime DLLs
           cp "$env:CUDA_PATH\bin\cudart64_*.dll" . 2>$null || true
           cp "$env:CUDA_PATH\bin\cublas64_*.dll" . 2>$null || true
