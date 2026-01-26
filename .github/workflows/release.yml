@@ -236,7 +236,7 @@ jobs:
           Get-ChildItem -Path C:\opencv-install -Recurse -Filter "*.dll" | Select-Object FullName
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install\lib" -DWITH_CUDA=ON
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR="C:\opencv-install" -DWITH_CUDA=ON
 
       - name: Build
         run: cmake --build build --config ${{ env.BUILD_TYPE }}
