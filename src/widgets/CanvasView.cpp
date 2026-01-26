@@ -3,6 +3,7 @@
 #include <QWheelEvent>
 #include <QMouseEvent>
 #include <QKeyEvent>
+#include <QFocusEvent>
 #include <QScrollBar>
 #include <QContextMenuEvent>
 #include <QTextDocument>
@@ -124,14 +125,12 @@ void CanvasView::clearAnnotations() {
 }
 
 void CanvasView::setEditMode(EditMode mode) {
+    // 清理所有进行中的操作状态
+    resetOperationState();
+
     m_mode = mode;
-    if (mode == EditMode::Pan) {
-        setCursor(Qt::OpenHandCursor);
-    } else if (mode == EditMode::DrawBBox || mode == EditMode::DrawKeypoint) {
-        setCursor(Qt::CrossCursor);
-    } else {
-        setCursor(Qt::ArrowCursor);
-    }
+    resetCursorForMode();
+
     // 只在边界框模式下且启用时显示十字线
     bool showCross = (mode == EditMode::DrawBBox) && m_crossHairEnabled;
     m_crossHairH->setVisible(showCross);
@@ -407,7 +406,7 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         }
     } else if (event->button() == Qt::RightButton) {
         m_panning = false;
-        setCursor(m_mode == EditMode::Pan ? Qt::OpenHandCursor : Qt::ArrowCursor);
+        resetCursorForMode();
     } else if (event->button() == Qt::MiddleButton) {
         if (m_dragging) {
             m_dragging = false;
@@ -428,6 +427,9 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
+    // 重置操作状态，因为右键菜单会捕获鼠标释放事件
+    resetOperationState();
+
     QPointF scenePos = mapToScene(event->pos());
     int annIdx = findAnnotationAt(scenePos);
     if (annIdx >= 0) {
@@ -810,6 +812,10 @@ void CanvasView::leaveEvent(QEvent* event) {
     // 鼠标离开时隐藏十字线
     m_crossHairH->setVisible(false);
     m_crossHairV->setVisible(false);
+
+    // 重置所有进行中的操作状态
+    resetOperationState();
+
     QGraphicsView::leaveEvent(event);
 }
 
@@ -869,4 +875,43 @@ void CanvasView::redo() {
         updateAnnotationItems();
         emit annotationsChanged();
     }
+}
+
+void CanvasView::resetCursorForMode() {
+    if (m_mode == EditMode::Pan) {
+        setCursor(Qt::OpenHandCursor);
+    } else if (m_mode == EditMode::DrawBBox || m_mode == EditMode::DrawKeypoint) {
+        setCursor(Qt::CrossCursor);
+    } else {
+        setCursor(Qt::ArrowCursor);
+    }
+}
+
+void CanvasView::resetOperationState() {
+    // 清理绘制状态
+    if (m_drawing) {
+        m_drawing = false;
+        if (m_tempRect) {
+            m_scene->removeItem(m_tempRect);
+            delete m_tempRect;
+            m_tempRect = nullptr;
+        }
+    }
+
+    // 清理拖动状态
+    m_dragging = false;
+    m_dragAnnIndex = -1;
+    m_dragPointIndex = -1;
+
+    // 清理平移状态
+    m_panning = false;
+
+    // 重置光标
+    resetCursorForMode();
+}
+
+void CanvasView::focusOutEvent(QFocusEvent* event) {
+    // 窗口失去焦点时重置所有操作状态
+    resetOperationState();
+    QGraphicsView::focusOutEvent(event);
 }

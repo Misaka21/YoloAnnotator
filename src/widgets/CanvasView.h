@@ -103,8 +103,13 @@ protected:
     void resizeEvent(QResizeEvent* event) override;
     void leaveEvent(QEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
+    void focusOutEvent(QFocusEvent* event) override;
 
 private:
+    // 重置光标为当前模式对应的光标
+    void resetCursorForMode();
+    // 重置所有进行中的操作状态
+    void resetOperationState();
     QGraphicsScene* m_scene;
     QGraphicsPixmapItem* m_pixmapItem = nullptr;
     QImage m_image;
