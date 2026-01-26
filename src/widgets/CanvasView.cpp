@@ -556,7 +556,7 @@ void CanvasView::updateAnnotationItems() {
         // 如果选中，绘制角点 (固定屏幕大小，不随缩放变化)
         if (i == m_selectedIndex) {
             double scale = transform().m11();
-            double cornerRadius = 8.0 / scale;  // 屏幕上固定8像素半径
+            double cornerRadius = 5.0 / scale;  // 屏幕上固定5像素半径
 
             QPointF corners[4] = {
                 {x, y}, {x + w, y}, {x + w, y + h}, {x, y + h}
@@ -754,7 +754,8 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
 
     // 在场景像素坐标中计算 (固定屏幕大小)
     double scale = transform().m11();
-    double threshold = 8.0 / scale;  // 屏幕上固定8像素，与角点视觉一致
+    double cornerThreshold = 6.0 / scale;    // 角点点击区域：6像素
+    double keypointThreshold = 15.0 / scale; // 关键点点击区域：15像素（隐形扩大）
 
     // 检查边界框角点（转换为场景像素坐标）
     const BoundingBox& bbox = ann.boundingBox();
@@ -768,7 +769,7 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
     for (int i = 0; i < 4; ++i) {
         double dist = std::sqrt(std::pow(scenePos.x() - corners[i].x(), 2) +
                                 std::pow(scenePos.y() - corners[i].y(), 2));
-        if (dist < threshold) {
+        if (dist < cornerThreshold) {
             return i;
         }
     }
@@ -781,7 +782,7 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
             double kpy = kp.y() * imgH;
             double dist = std::sqrt(std::pow(scenePos.x() - kpx, 2) +
                                     std::pow(scenePos.y() - kpy, 2));
-            if (dist < threshold) {
+            if (dist < keypointThreshold) {
                 return i + 4;
             }
         }
