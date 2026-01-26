@@ -139,10 +139,10 @@ jobs:
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
           # OpenCV DLLs
-          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || cp C:\opencv-install\bin\*.dll . 2>$null || true
+          cp C:\opencv-install\bin\*.dll . -ErrorAction SilentlyContinue
           # OpenVINO DLLs
-          cp C:\openvino\runtime\bin\intel64\Release\*.dll . 2>$null || true
-          cp C:\openvino\runtime\3rdparty\tbb\bin\*.dll . 2>$null || true
+          cp C:\openvino\runtime\bin\intel64\Release\*.dll . -ErrorAction SilentlyContinue
+          cp C:\openvino\runtime\3rdparty\tbb\bin\*.dll . -ErrorAction SilentlyContinue
 
       - name: Create ZIP
         run: Compress-Archive -Path package/* -DestinationPath YoloAnnotator-Windows-x64-OpenVINO.zip
@@ -248,13 +248,13 @@ jobs:
           cd package
           windeployqt --release --no-translations --no-system-d3d-compiler --no-opengl-sw YoloAnnotator.exe
           # OpenCV DLLs
-          cp C:\opencv-install\x64\vc17\bin\*.dll . 2>$null || cp C:\opencv-install\bin\*.dll . 2>$null || true
+          cp C:\opencv-install\bin\*.dll . -ErrorAction SilentlyContinue
           # CUDA Runtime DLLs
-          cp "$env:CUDA_PATH\bin\cudart64_*.dll" . 2>$null || true
-          cp "$env:CUDA_PATH\bin\cublas64_*.dll" . 2>$null || true
-          cp "$env:CUDA_PATH\bin\cublasLt64_*.dll" . 2>$null || true
-          cp "$env:CUDA_PATH\bin\cufft64_*.dll" . 2>$null || true
-          cp "$env:CUDA_PATH\bin\cudnn*.dll" . 2>$null || true
+          cp "$env:CUDA_PATH\bin\cudart64_*.dll" . -ErrorAction SilentlyContinue
+          cp "$env:CUDA_PATH\bin\cublas64_*.dll" . -ErrorAction SilentlyContinue
+          cp "$env:CUDA_PATH\bin\cublasLt64_*.dll" . -ErrorAction SilentlyContinue
+          cp "$env:CUDA_PATH\bin\cufft64_*.dll" . -ErrorAction SilentlyContinue
+          cp "$env:CUDA_PATH\bin\cudnn*.dll" . -ErrorAction SilentlyContinue
 
       - name: Create ZIP
         run: Compress-Archive -Path package/* -DestinationPath YoloAnnotator-Windows-x64-CUDA.zip
