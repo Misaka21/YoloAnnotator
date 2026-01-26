@@ -2,6 +2,7 @@
 #include "NewProjectDialog.h"
 #include "SplitDatasetDialog.h"
 #include "SkeletonConfigDialog.h"
+#include "DatasetAnalysisDialog.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -179,6 +180,9 @@ void MainWindow::setupMenus() {
     toolsMenu->addSeparator();
     QAction* splitAction = toolsMenu->addAction("分割数据集(&D)...");
     connect(splitAction, &QAction::triggered, this, &MainWindow::onSplitDataset);
+
+    QAction* analysisAction = toolsMenu->addAction("数据集分析(&A)...");
+    connect(analysisAction, &QAction::triggered, this, &MainWindow::onDatasetAnalysis);
 
     // 自动标注菜单
     QMenu* autoMenu = menuBar()->addMenu("自动标注(&A)");
@@ -1122,5 +1126,18 @@ void MainWindow::onSplitDataset() {
         dialog.setSourcePath(m_currentFolder, m_labelsFolder);
     }
 
+    dialog.exec();
+}
+
+void MainWindow::onDatasetAnalysis() {
+    if (m_labelsFolder.isEmpty()) {
+        QMessageBox::warning(this, "提示", "请先打开一个数据集项目或文件夹");
+        return;
+    }
+
+    DatasetAnalysisDialog dialog(this);
+    dialog.setLabelsPath(m_labelsFolder);
+    dialog.setClassNames(m_classesLoader.classNames());
+    dialog.analyze();
     dialog.exec();
 }

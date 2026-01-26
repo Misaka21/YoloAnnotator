@@ -407,6 +407,19 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         }
     } else if (event->button() == Qt::RightButton) {
         m_panning = false;
+
+        // 检查是否是单击（用于显示上下文菜单）
+        QPoint delta = event->pos() - m_rightClickPos;
+        if (delta.manhattanLength() <= 5) {
+            // 是单击，显示上下文菜单
+            QPointF scenePos = mapToScene(event->pos());
+            int annIdx = findAnnotationAt(scenePos);
+            if (annIdx >= 0) {
+                setSelectedAnnotation(annIdx);
+                emit contextMenuRequested(annIdx, mapToGlobal(event->pos()));
+            }
+        }
+
         resetCursorForMode();
     } else if (event->button() == Qt::MiddleButton) {
         if (m_dragging) {
@@ -428,28 +441,9 @@ void CanvasView::mouseDoubleClickEvent(QMouseEvent* event) {
 }
 
 void CanvasView::contextMenuEvent(QContextMenuEvent* event) {
-    // 检查是否是右键拖动（平移）而非单击
-    // 如果移动距离超过阈值，不弹出菜单
-    QPoint delta = event->pos() - m_rightClickPos;
-    if (delta.manhattanLength() > 5) {
-        // 是拖动，不是单击，重置状态并返回
-        resetOperationState();
-        event->accept();
-        return;
-    }
-
-    // 重置操作状态，因为右键菜单会捕获鼠标释放事件
-    resetOperationState();
-
-    QPointF scenePos = mapToScene(event->pos());
-    int annIdx = findAnnotationAt(scenePos);
-    if (annIdx >= 0) {
-        setSelectedAnnotation(annIdx);
-        emit contextMenuRequested(annIdx, event->globalPos());
-        event->accept();
-    } else {
-        QGraphicsView::contextMenuEvent(event);
-    }
+    // 右键菜单在 mouseReleaseEvent 中处理，这里直接忽略
+    // 这样可以避免 Linux 上 contextMenuEvent 中断鼠标事件流的问题
+    event->accept();
 }
 
 void CanvasView::keyPressEvent(QKeyEvent* event) {

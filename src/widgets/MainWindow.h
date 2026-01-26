@@ -107,6 +107,7 @@ private slots:
 
     // 数据集工具
     void onSplitDataset();
+    void onDatasetAnalysis();
 
 private:
     // UI组件
