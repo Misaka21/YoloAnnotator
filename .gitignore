@@ -39,3 +39,6 @@ Thumbs.db
 # Claude Code
 CLAUDE.md
 .claude/
+
+# Local files
+classes.txt

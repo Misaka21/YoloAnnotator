@@ -5,6 +5,7 @@
 支持目标检测和姿态估计两种标注模式，兼容 Ultralytics YOLO 标准格式。内置 AI 自动标注功能，支持加载 ONNX 模型一键生成标注。
 
 ![screenshot](docs/screenshot.png)
+![screenshot2](docs/screenshot2.png)
 
 ## 特性
 
