@@ -669,6 +669,7 @@ void CanvasView::updateAnnotationItems() {
             }
 
             // 绘制骨架连线
+            double boneWidth = 2.0 / viewScale;  // 固定屏幕宽度
             for (const auto& bone : m_skeleton.bones()) {
                 if (bone.from < ann.keypointCount() && bone.to < ann.keypointCount()) {
                     const Keypoint& kp1 = ann.keypoints()[bone.from];
@@ -678,7 +679,7 @@ void CanvasView::updateAnnotationItems() {
                         double y1 = kp1.y() * imgH;
                         double x2 = kp2.x() * imgW;
                         double y2 = kp2.y() * imgH;
-                        auto* lineItem = m_scene->addLine(x1, y1, x2, y2, QPen(bone.color, 2));
+                        auto* lineItem = m_scene->addLine(x1, y1, x2, y2, QPen(bone.color, boneWidth));
                         lineItem->setZValue(2);
                         m_annotationItems.append(lineItem);
                     }
@@ -765,7 +766,7 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
 
     // 在场景像素坐标中计算 (固定屏幕大小)
     double scale = transform().m11();
-    double cornerThreshold = 6.0 / scale;    // 角点点击区域：6像素
+    double cornerThreshold = 5.0 / scale;    // 角点点击区域：与视觉一致
     double keypointThreshold = 15.0 / scale; // 关键点点击区域：15像素（隐形扩大）
 
     // 检查边界框角点（转换为场景像素坐标）
