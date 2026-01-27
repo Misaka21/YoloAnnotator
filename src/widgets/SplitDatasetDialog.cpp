@@ -120,6 +120,14 @@ void SplitDatasetDialog::setupUI() {
         "勾选: train/images/ + train/labels/\n"
         "不勾选: train/ (图片和标签放一起)");
     structLayout->addWidget(m_separateFoldersCheck);
+
+    m_excludeBackgroundCheck = new QCheckBox("仅导出有标注的图片（排除背景图片）");
+    m_excludeBackgroundCheck->setChecked(false);
+    m_excludeBackgroundCheck->setToolTip(
+        "勾选: 只导出有非空 txt 标注文件的图片\n"
+        "不勾选: 导出所有图片（无标注的作为背景/负样本）");
+    structLayout->addWidget(m_excludeBackgroundCheck);
+
     mainLayout->addWidget(structGroup);
 
     // === 文件夹名称组 ===
@@ -302,7 +310,35 @@ void SplitDatasetDialog::performSplit() {
         return;
     }
 
-    m_statusLabel->setText(QString("找到 %1 张图片").arg(imageFiles.size()));
+    // 如果需要排除背景图片，过滤掉没有非空标注的图片
+    int backgroundCount = 0;
+    if (m_excludeBackgroundCheck->isChecked()) {
+        QStringList filteredFiles;
+        for (const QString& imgName : imageFiles) {
+            QString baseName = QFileInfo(imgName).completeBaseName();
+            QString lblPath = labelsDir + "/" + baseName + ".txt";
+            QFileInfo lblInfo(lblPath);
+
+            // 检查标注文件是否存在且非空
+            if (lblInfo.exists() && lblInfo.size() > 0) {
+                filteredFiles.append(imgName);
+            } else {
+                backgroundCount++;
+            }
+        }
+        imageFiles = filteredFiles;
+
+        if (imageFiles.isEmpty()) {
+            QMessageBox::warning(this, "错误", "没有找到有标注的图片文件");
+            return;
+        }
+    }
+
+    QString statusText = QString("找到 %1 张图片").arg(imageFiles.size());
+    if (backgroundCount > 0) {
+        statusText += QString("（已排除 %1 张背景图片）").arg(backgroundCount);
+    }
+    m_statusLabel->setText(statusText);
     QApplication::processEvents();
 
     // 随机打乱

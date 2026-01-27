@@ -52,6 +52,9 @@ private:
     // 目录结构
     QCheckBox* m_separateFoldersCheck;  // 是否分开 images/labels 子文件夹
 
+    // 过滤选项
+    QCheckBox* m_excludeBackgroundCheck;  // 排除无标注的背景图片
+
     // 文件夹名称
     QLineEdit* m_trainFolderEdit;
     QLineEdit* m_valFolderEdit;
