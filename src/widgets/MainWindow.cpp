@@ -1119,13 +1119,55 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
     QString imagePath = knownImagePath;
     bool imagePathUserSelected = false;
     if (imagePath.isEmpty()) {
-        if (!config.resolvedTrainPath().isEmpty() && QDir(config.resolvedTrainPath()).exists()) {
-            imagePath = config.resolvedTrainPath();
-        } else if (!config.resolvedValPath().isEmpty() && QDir(config.resolvedValPath()).exists()) {
-            imagePath = config.resolvedValPath();
-        } else if (!config.datasetPath().isEmpty() && QDir(config.datasetPath()).exists()) {
-            imagePath = config.datasetPath();
+        // 收集所有可用的数据集路径
+        struct DatasetOption {
+            QString name;
+            QString path;
+            int count;
+        };
+        QVector<DatasetOption> options;
+
+        auto countImages = [](const QString& dir) -> int {
+            if (dir.isEmpty() || !QDir(dir).exists()) return 0;
+            QStringList filters = {"*.jpg", "*.jpeg", "*.png", "*.bmp"};
+            return QDir(dir).entryList(filters, QDir::Files).count();
+        };
+
+        QString trainPath = config.resolvedTrainPath();
+        QString valPath = config.resolvedValPath();
+        QString testPath = config.resolvedTestPath();
+
+        int trainCount = countImages(trainPath);
+        int valCount = countImages(valPath);
+        int testCount = countImages(testPath);
+
+        if (trainCount > 0) options.append({"train", trainPath, trainCount});
+        if (valCount > 0) options.append({"val", valPath, valCount});
+        if (testCount > 0) options.append({"test", testPath, testCount});
+
+        if (options.size() > 1) {
+            // 多个数据集可用，让用户选择
+            QStringList items;
+            for (const auto& opt : options) {
+                items << QString("%1 (%2 张图片)").arg(opt.name).arg(opt.count);
+            }
+
+            bool ok;
+            QString selected = QInputDialog::getItem(this, "选择数据集",
+                "检测到多个数据集，请选择要加载的数据集：",
+                items, 0, false, &ok);
+
+            if (ok && !selected.isEmpty()) {
+                int idx = items.indexOf(selected);
+                if (idx >= 0 && idx < options.size()) {
+                    imagePath = options[idx].path;
+                }
+            }
+        } else if (options.size() == 1) {
+            // 只有一个数据集，直接使用
+            imagePath = options[0].path;
         }
+        // 如果没有找到任何数据集，imagePath 保持为空，后面会让用户手动选择
     }
 
     if (imagePath.isEmpty()) {
