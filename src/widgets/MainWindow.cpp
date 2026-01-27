@@ -1069,7 +1069,26 @@ void MainWindow::onCreateProjectFromTxt() {
 void MainWindow::loadProject(const DatasetConfig& config, const QString& knownImagePath) {
     m_datasetConfig = config;
     m_classesLoader.setClassNames(config.classNames());
-    m_classesLocked = true;
+    m_classesLocked = !config.classNames().isEmpty();
+
+    // 如果类别名称为空，让用户选择导入
+    if (config.classNames().isEmpty()) {
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "类别名称",
+            "YAML 文件中未找到类别名称 (names)。\n\n"
+            "是否导入 classes.txt 文件?",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+        if (reply == QMessageBox::Yes) {
+            QString txtPath = QFileDialog::getOpenFileName(this, "选择 classes.txt",
+                QFileInfo(config.projectPath()).absolutePath(),
+                "类别文件 (*.txt);;所有文件 (*)");
+
+            if (!txtPath.isEmpty()) {
+                m_classesLoader.load(txtPath);
+                m_classesLocked = true;
+            }
+        }
+    }
 
     // 设置任务类型和骨架配置
     if (config.isPose()) {
