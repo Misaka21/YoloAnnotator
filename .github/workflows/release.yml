@@ -286,14 +286,37 @@ jobs:
           modules: 'qtimageformats'
           cache: true
 
-      - name: Install OpenCV
-        run: sudo apt-get install -y libopencv-dev
+      - name: Cache OpenCV Build
+        id: cache-opencv
+        uses: actions/cache@v4
+        with:
+          path: /opt/opencv-install
+          key: opencv-4.10.0-linux-cpu-v1
+
+      - name: Build OpenCV
+        if: steps.cache-opencv.outputs.cache-hit != 'true'
+        run: |
+          wget -O opencv.zip "https://github.com/opencv/opencv/archive/refs/tags/4.10.0.zip"
+          unzip opencv.zip
+          cmake -B opencv-build -S opencv-4.10.0 \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DCMAKE_INSTALL_PREFIX=/opt/opencv-install \
+            -DBUILD_SHARED_LIBS=ON \
+            -DBUILD_opencv_world=ON \
+            -DBUILD_TESTS=OFF \
+            -DBUILD_PERF_TESTS=OFF \
+            -DBUILD_EXAMPLES=OFF \
+            -DBUILD_opencv_python3=OFF \
+            -DWITH_PROTOBUF=ON \
+            -DBUILD_PROTOBUF=ON
+          cmake --build opencv-build --parallel $(nproc)
+          sudo cmake --install opencv-build
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }}
+        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4
 
       - name: Build
-        run: cmake --build build --config ${{ env.BUILD_TYPE }}
+        run: cmake --build build --parallel $(nproc)
 
       - name: Package AppImage
         run: |
@@ -301,10 +324,14 @@ jobs:
           chmod +x linuxdeployqt-continuous-x86_64.AppImage
 
           mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/lib
           mkdir -p AppDir/usr/share/applications
           mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
 
           cp build/YoloAnnotator AppDir/usr/bin/
+
+          # Copy OpenCV libs
+          cp /opt/opencv-install/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
 
           cat > AppDir/usr/share/applications/YoloAnnotator.desktop << 'EOF'
           [Desktop Entry]
