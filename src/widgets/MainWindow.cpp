@@ -54,14 +54,28 @@ void BatchAnnotateWorker::process() {
 
         // 根据模式保存
         if (m_overwrite) {
-            m_annotationIO->save(txtPath, annotations);
+            // 即使没有检测结果，也创建空文件标记为"已处理"
+            if (annotations.isEmpty()) {
+                QFile file(txtPath);
+                file.open(QIODevice::WriteOnly | QIODevice::Text);
+                file.close();
+            } else {
+                m_annotationIO->save(txtPath, annotations);
+            }
         } else {
             QVector<Annotation> existing;
             if (QFile::exists(txtPath)) {
                 existing = m_annotationIO->load(txtPath);
             }
             existing.append(annotations);
-            m_annotationIO->save(txtPath, existing);
+            // 追加模式下也需要处理空结果
+            if (existing.isEmpty()) {
+                QFile file(txtPath);
+                file.open(QIODevice::WriteOnly | QIODevice::Text);
+                file.close();
+            } else {
+                m_annotationIO->save(txtPath, existing);
+            }
         }
 
         emit fileCompleted(i, fileName, detCount);
