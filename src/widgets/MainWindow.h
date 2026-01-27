@@ -39,7 +39,7 @@ public slots:
 
 signals:
     void progressUpdated(int index, int total, const QString& fileName, int detections);
-    void fileCompleted(int fileIndex, const QString& fileName);
+    void fileCompleted(int fileIndex, const QString& fileName, int detections);
     void finished(int totalProcessed, int totalDetections);
 
 private:
@@ -102,7 +102,7 @@ private slots:
     void onAutoAnnotateUnannotated();
     void onStopBatchAnnotate();  // 停止批量标注
     void onBatchProgress(int index, int total, const QString& fileName, int detections);
-    void onBatchFileCompleted(int fileIndex, const QString& fileName);
+    void onBatchFileCompleted(int fileIndex, const QString& fileName, int detections);
     void onBatchFinished(int totalProcessed, int totalDetections);
 
     // 数据集工具

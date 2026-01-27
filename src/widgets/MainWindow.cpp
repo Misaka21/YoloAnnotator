@@ -64,7 +64,7 @@ void BatchAnnotateWorker::process() {
             m_annotationIO->save(txtPath, existing);
         }
 
-        emit fileCompleted(i, fileName);
+        emit fileCompleted(i, fileName, detCount);
     }
 
     emit finished(m_stop ? -1 : total, totalDetections);
@@ -810,13 +810,20 @@ void MainWindow::onBatchProgress(int index, int total, const QString& fileName, 
         .arg(fileName).arg(index + 1).arg(total).arg(percent));
 }
 
-void MainWindow::onBatchFileCompleted(int, const QString& fileName) {
-    // 更新文件列表状态 - 已完成
+void MainWindow::onBatchFileCompleted(int, const QString& fileName, int detections) {
+    // 更新文件列表状态 - 根据是否检测到目标决定颜色
     int fileIdx = m_imageFiles.indexOf(fileName);
     if (fileIdx >= 0 && fileIdx < m_fileList->count()) {
         QListWidgetItem* item = m_fileList->item(fileIdx);
-        item->setText(QString::fromUtf8("✓ ") + fileName);
-        item->setForeground(QColor(0, 180, 0));
+        if (detections > 0) {
+            // 检测到目标，标绿
+            item->setText(QString::fromUtf8("✓ ") + fileName);
+            item->setForeground(QColor(0, 180, 0));
+        } else {
+            // 未检测到目标，恢复默认
+            item->setText("   " + fileName);
+            item->setForeground(palette().text().color());
+        }
     }
 }
 
