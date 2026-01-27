@@ -84,13 +84,36 @@ void BatchAnnotateWorker::process() {
     emit finished(m_stop ? -1 : total, totalDetections);
 }
 
+// AnnotationStatusWorker 实现
+void AnnotationStatusWorker::process() {
+    for (int i = 0; i < m_files.size(); ++i) {
+        if (m_stop) break;
+
+        QString fileName = m_files[i];
+        QString txtPath;
+        if (!m_labelsFolder.isEmpty()) {
+            txtPath = m_labelsFolder + "/" + QFileInfo(fileName).completeBaseName() + ".txt";
+        } else {
+            txtPath = m_folder + "/" + QFileInfo(fileName).completeBaseName() + ".txt";
+        }
+
+        bool hasAnnotation = QFile::exists(txtPath);
+        emit fileStatusReady(i, hasAnnotation);
+    }
+
+    emit finished();
+}
+
 MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     m_detector = new YoloDetector(this);
     setupUI(); setupMenus(); setupToolBar(); setupConnections();
     setWindowTitle("YOLO 标注工具"); resize(1400, 900);
 }
 
-MainWindow::~MainWindow() { if (m_modified && m_autoSave) saveCurrentAnnotation(); }
+MainWindow::~MainWindow() {
+    stopStatusCheck();
+    if (m_modified && m_autoSave) saveCurrentAnnotation();
+}
 
 void MainWindow::setupUI() {
     QWidget* central = new QWidget(this); setCentralWidget(central);
@@ -575,19 +598,66 @@ bool MainWindow::checkUnsavedChanges() {
 }
 
 void MainWindow::updateFileList() {
+    // 停止之前的后台检查
+    stopStatusCheck();
+
+    // 快速加载：只显示文件名，不检查标注状态
+    m_fileList->blockSignals(true);
     m_fileList->clear();
     for (const QString& file : m_imageFiles) {
-        QString imgPath = m_currentFolder + "/" + file;
-        QString txtPath = getAnnotationPath(imgPath);
-        bool hasAnnotation = QFile::exists(txtPath);
-        // 用符号表示是否有标注
-        QString displayText = hasAnnotation ? QString::fromUtf8("✓ ") + file : QString::fromUtf8("   ") + file;
-        QListWidgetItem* item = new QListWidgetItem(displayText);
-        if (hasAnnotation) {
-            item->setForeground(QColor(0, 180, 0));  // 绿色表示已标注
-        }
+        QListWidgetItem* item = new QListWidgetItem(QString::fromUtf8("   ") + file);
         m_fileList->addItem(item);
     }
+    m_fileList->blockSignals(false);
+
+    // 启动后台检查标注状态
+    startStatusCheck();
+}
+
+void MainWindow::startStatusCheck() {
+    if (m_imageFiles.isEmpty()) return;
+
+    m_statusThread = new QThread(this);
+    m_statusWorker = new AnnotationStatusWorker();
+    m_statusWorker->setFiles(m_imageFiles, m_currentFolder, m_labelsFolder);
+    m_statusWorker->moveToThread(m_statusThread);
+
+    connect(m_statusThread, &QThread::started, m_statusWorker, &AnnotationStatusWorker::process);
+    connect(m_statusWorker, &AnnotationStatusWorker::fileStatusReady, this, &MainWindow::onFileStatusReady);
+    connect(m_statusWorker, &AnnotationStatusWorker::finished, this, &MainWindow::onStatusCheckFinished);
+    connect(m_statusWorker, &AnnotationStatusWorker::finished, m_statusThread, &QThread::quit);
+    connect(m_statusThread, &QThread::finished, m_statusWorker, &QObject::deleteLater);
+    connect(m_statusThread, &QThread::finished, m_statusThread, &QObject::deleteLater);
+
+    m_statusThread->start();
+}
+
+void MainWindow::stopStatusCheck() {
+    if (m_statusWorker) {
+        m_statusWorker->requestStop();
+    }
+    if (m_statusThread && m_statusThread->isRunning()) {
+        m_statusThread->quit();
+        m_statusThread->wait(1000);
+    }
+    m_statusWorker = nullptr;
+    m_statusThread = nullptr;
+}
+
+void MainWindow::onFileStatusReady(int index, bool hasAnnotation) {
+    if (index < 0 || index >= m_fileList->count()) return;
+
+    QListWidgetItem* item = m_fileList->item(index);
+    QString fileName = m_imageFiles[index];
+
+    if (hasAnnotation) {
+        item->setText(QString::fromUtf8("✓ ") + fileName);
+        item->setForeground(QColor(0, 180, 0));
+    }
+}
+
+void MainWindow::onStatusCheckFinished() {
+    // 后台检查完成，可以在这里做一些清理或提示
 }
 
 void MainWindow::updateAnnotationList() {

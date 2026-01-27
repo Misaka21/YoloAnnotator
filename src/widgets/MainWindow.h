@@ -18,6 +18,32 @@
 
 class YoloDetector;
 
+// 后台检查标注状态的工作线程
+class AnnotationStatusWorker : public QObject {
+    Q_OBJECT
+public:
+    AnnotationStatusWorker() = default;
+    void setFiles(const QStringList& files, const QString& folder, const QString& labelsFolder) {
+        m_files = files;
+        m_folder = folder;
+        m_labelsFolder = labelsFolder;
+    }
+    void requestStop() { m_stop = true; }
+
+public slots:
+    void process();
+
+signals:
+    void fileStatusReady(int index, bool hasAnnotation);
+    void finished();
+
+private:
+    QStringList m_files;
+    QString m_folder;
+    QString m_labelsFolder;
+    std::atomic<bool> m_stop{false};
+};
+
 // 批量标注后台工作线程
 class BatchAnnotateWorker : public QObject {
     Q_OBJECT
@@ -109,6 +135,10 @@ private slots:
     void onSplitDataset();
     void onDatasetAnalysis();
 
+    // 后台标注状态检查
+    void onFileStatusReady(int index, bool hasAnnotation);
+    void onStatusCheckFinished();
+
 private:
     // UI组件
     CanvasView* m_canvasView;
@@ -153,6 +183,10 @@ private:
     QThread* m_batchThread = nullptr;
     BatchAnnotateWorker* m_batchWorker = nullptr;
 
+    // 后台状态检查
+    QThread* m_statusThread = nullptr;
+    AnnotationStatusWorker* m_statusWorker = nullptr;
+
     // 自动标注
     YoloDetector* m_detector = nullptr;
 
@@ -165,6 +199,8 @@ private:
     void saveCurrentAnnotation();
     bool checkUnsavedChanges();  // 检查未保存的更改，返回true表示可以继续
     void updateFileList();
+    void startStatusCheck();     // 启动后台检查标注状态
+    void stopStatusCheck();      // 停止后台检查
     void updateAnnotationList();
     void updateClassList();
     void updateStatusBar();
