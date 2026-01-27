@@ -635,19 +635,28 @@ void MainWindow::startStatusCheck() {
 void MainWindow::stopStatusCheck() {
     if (m_statusWorker) {
         m_statusWorker->requestStop();
+        // 断开信号连接，防止旧线程继续发送信号
+        disconnect(m_statusWorker, nullptr, this, nullptr);
     }
     if (m_statusThread && m_statusThread->isRunning()) {
         m_statusThread->quit();
-        m_statusThread->wait(1000);
+        if (!m_statusThread->wait(2000)) {
+            // 如果线程没有在2秒内停止，强制终止
+            m_statusThread->terminate();
+            m_statusThread->wait();
+        }
     }
     m_statusWorker = nullptr;
     m_statusThread = nullptr;
 }
 
 void MainWindow::onFileStatusReady(int index, bool hasAnnotation) {
-    if (index < 0 || index >= m_fileList->count()) return;
+    // 安全检查：确保索引有效且列表同步
+    if (index < 0 || index >= m_fileList->count() || index >= m_imageFiles.size()) return;
 
     QListWidgetItem* item = m_fileList->item(index);
+    if (!item) return;
+
     QString fileName = m_imageFiles[index];
 
     if (hasAnnotation) {
