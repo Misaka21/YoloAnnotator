@@ -13,7 +13,7 @@
 - **即开即用** - 打开文件夹自动识别 `classes.txt` 或 `dataset.yaml`
 - **双模式支持** - 目标检测 (Detection) 和姿态估计 (Pose)
 - **AI 自动标注** - 加载 ONNX 模型一键生成标注
-- **多后端推理** - CPU / OpenCL / OpenVINO / CUDA
+- **多后端推理** - CPU / OpenCL / OpenVINO
 - **跨平台** - Windows / macOS / Linux
 
 ## 下载
@@ -24,7 +24,6 @@
 | ------------------- | ------------------------------------------ |
 | Windows             | `YoloAnnotator-Windows-x64.zip`          |
 | Windows (OpenVINO)  | `YoloAnnotator-Windows-x64-OpenVINO.zip` |
-| Windows (CUDA)      | `YoloAnnotator-Windows-x64-CUDA.zip`     |
 | macOS Intel         | `YoloAnnotator-macOS-Intel.dmg`          |
 | macOS Apple Silicon | `YoloAnnotator-macOS-AppleSilicon.dmg`   |
 | Linux               | `YoloAnnotator-Linux-x86_64.AppImage`    |
@@ -47,7 +46,7 @@
 2. **标注当前图片** - `Ctrl+G`
 3. **批量标注** - 菜单「自动标注 → 批量标注所有」
 
-支持 CPU / OpenCL / OpenVINO / CUDA 多种推理后端。
+支持 CPU / OpenCL / OpenVINO 多种推理后端。
 
 ### 创建项目
 

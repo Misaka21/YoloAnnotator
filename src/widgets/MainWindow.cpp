@@ -192,8 +192,8 @@ void MainWindow::setupMenus() {
     QAction* zoomOutAction = viewMenu->addAction("缩小(&O)");
     zoomOutAction->setShortcut(QKeySequence("Ctrl+-"));
     connect(zoomOutAction, &QAction::triggered, m_canvasView, &CanvasView::zoomOut);
-    QAction* zoomFitAction = viewMenu->addAction("适应窗口(&F)");
-    zoomFitAction->setShortcut(QKeySequence("Ctrl+0"));
+    QAction* zoomFitAction = viewMenu->addAction("适应窗口");
+    zoomFitAction->setShortcut(QKeySequence("F"));
     connect(zoomFitAction, &QAction::triggered, m_canvasView, &CanvasView::zoomFit);
     viewMenu->addSeparator();
 
