@@ -82,6 +82,10 @@ bool YoloDetector::loadModel(const QString& onnxPath)
             return false;
         }
 
+        // 预热推理：第一次推理会初始化计算图，比较慢
+        // 在这里做一次预热，避免用户第一次检测时卡顿
+        warmup();
+
         emit modelLoaded(onnxPath);
         return true;
 
@@ -157,6 +161,11 @@ void YoloDetector::setBackend(InferenceBackend backend)
         m_net.setPreferableBackend(cv::dnn::DNN_BACKEND_OPENCV);
         m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
         break;
+    }
+
+    // 切换后端后需要重新预热（仅在模型已完全加载时）
+    if (m_modelType != ModelType::Unknown) {
+        warmup();
     }
 }
 
@@ -234,6 +243,25 @@ bool YoloDetector::analyzeModel()
     } catch (const cv::Exception& e) {
         emit errorOccurred(QString("Failed to analyze model: %1").arg(e.what()));
         return false;
+    }
+}
+
+void YoloDetector::warmup()
+{
+    if (m_net.empty()) return;
+
+    try {
+        // 创建一个假输入进行预热推理
+        cv::Mat dummy(m_inputSize.height(), m_inputSize.width(), CV_8UC3, cv::Scalar(114, 114, 114));
+        cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
+        m_net.setInput(blob);
+
+        std::vector<cv::Mat> outputs;
+        m_net.forward(outputs);
+
+        qDebug() << "Model warmup completed";
+    } catch (const cv::Exception& e) {
+        qWarning() << "Warmup failed:" << e.what();
     }
 }
 
