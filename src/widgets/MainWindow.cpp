@@ -1071,6 +1071,8 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
     m_classesLoader.setClassNames(config.classNames());
     m_classesLocked = !config.classNames().isEmpty();
 
+    bool configModified = false;
+
     // 如果类别名称为空，让用户选择导入
     if (config.classNames().isEmpty()) {
         QMessageBox::StandardButton reply = QMessageBox::question(this, "类别名称",
@@ -1086,6 +1088,8 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
             if (!txtPath.isEmpty()) {
                 m_classesLoader.load(txtPath);
                 m_classesLocked = true;
+                m_datasetConfig.setClassNames(m_classesLoader.classNames());
+                configModified = true;
             }
         }
     }
@@ -1104,6 +1108,7 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
 
     // 加载图片 - 优先使用已知路径
     QString imagePath = knownImagePath;
+    bool imagePathUserSelected = false;
     if (imagePath.isEmpty()) {
         if (!config.resolvedTrainPath().isEmpty() && QDir(config.resolvedTrainPath()).exists()) {
             imagePath = config.resolvedTrainPath();
@@ -1118,10 +1123,30 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
         // 询问用户选择图片文件夹
         imagePath = QFileDialog::getExistingDirectory(this, "选择图片文件夹",
             QFileInfo(config.projectPath()).absolutePath());
+        imagePathUserSelected = !imagePath.isEmpty();
     }
 
     if (!imagePath.isEmpty()) {
+        // 更新配置中的路径（使用相对于YAML的路径）
+        if (imagePathUserSelected && !config.projectPath().isEmpty()) {
+            QDir yamlDir = QFileInfo(config.projectPath()).absoluteDir();
+            QString relativePath = yamlDir.relativeFilePath(imagePath);
+            m_datasetConfig.setDatasetPath(relativePath);
+            m_datasetConfig.setTrainPath(relativePath);
+            configModified = true;
+        }
         loadImagesFromPath(imagePath);
+    }
+
+    // 如果配置被修改，询问是否保存
+    if (configModified && !config.projectPath().isEmpty()) {
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "保存配置",
+            "项目配置已更新。\n\n是否保存到 YAML 文件?",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+        if (reply == QMessageBox::Yes) {
+            m_datasetConfig.saveYAML(config.projectPath());
+        }
     }
 
     updateClassList();
