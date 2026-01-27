@@ -254,19 +254,43 @@ bool DatasetConfig::saveYAML(const QString& path) const {
 
 QString DatasetConfig::resolvedTrainPath() const {
     if (m_trainPath.isEmpty()) return QString();
-    QDir base(m_datasetPath);
+
+    // 如果 datasetPath 是相对路径，则相对于 YAML 文件所在目录
+    QString basePath = m_datasetPath;
+    if (!m_projectPath.isEmpty() && !QDir::isAbsolutePath(m_datasetPath)) {
+        QDir yamlDir = QFileInfo(m_projectPath).absoluteDir();
+        basePath = yamlDir.absoluteFilePath(m_datasetPath);
+    }
+
+    QDir base(basePath);
     return base.absoluteFilePath(m_trainPath);
 }
 
 QString DatasetConfig::resolvedValPath() const {
     if (m_valPath.isEmpty()) return QString();
-    QDir base(m_datasetPath);
+
+    // 如果 datasetPath 是相对路径，则相对于 YAML 文件所在目录
+    QString basePath = m_datasetPath;
+    if (!m_projectPath.isEmpty() && !QDir::isAbsolutePath(m_datasetPath)) {
+        QDir yamlDir = QFileInfo(m_projectPath).absoluteDir();
+        basePath = yamlDir.absoluteFilePath(m_datasetPath);
+    }
+
+    QDir base(basePath);
     return base.absoluteFilePath(m_valPath);
 }
 
 QString DatasetConfig::resolvedTestPath() const {
     if (m_testPath.isEmpty()) return QString();
-    QDir base(m_datasetPath);
+
+    // 如果 datasetPath 是相对路径，则相对于 YAML 文件所在目录
+    QString basePath = m_datasetPath;
+    if (!m_projectPath.isEmpty() && !QDir::isAbsolutePath(m_datasetPath)) {
+        QDir yamlDir = QFileInfo(m_projectPath).absoluteDir();
+        basePath = yamlDir.absoluteFilePath(m_datasetPath);
+    }
+
+    QDir base(basePath);
     return base.absoluteFilePath(m_testPath);
 }
 

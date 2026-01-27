@@ -1140,7 +1140,10 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
         if (imagePathUserSelected && !config.projectPath().isEmpty()) {
             QDir yamlDir = QFileInfo(config.projectPath()).absoluteDir();
             QString relativePath = yamlDir.relativeFilePath(imagePath);
-            m_datasetConfig.setDatasetPath(relativePath);
+
+            // datasetPath 应该是 YAML 所在目录（用 "." 表示）
+            // trainPath 是相对于 datasetPath 的路径
+            m_datasetConfig.setDatasetPath(".");
             m_datasetConfig.setTrainPath(relativePath);
             configModified = true;
         }
