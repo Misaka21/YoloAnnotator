@@ -392,7 +392,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-linux-v4
+          key: opencv-${{ env.OPENCV_VERSION }}-openvino2023-linux-v5
 
       - name: Build OpenCV with OpenVINO
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -408,12 +408,17 @@ jobs:
             -DBUILD_PERF_TESTS=OFF \
             -DBUILD_EXAMPLES=OFF \
             -DBUILD_opencv_python3=OFF \
-            -DWITH_OPENVINO=ON
+            -DWITH_OPENVINO=ON \
+            -DWITH_PROTOBUF=ON \
+            -DBUILD_PROTOBUF=ON
           cmake --build opencv-build --parallel $(nproc)
           sudo cmake --install opencv-build
 
       - name: Configure CMake
-        run: cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4 -DWITH_OPENVINO=ON
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -DOpenCV_DIR=/opt/opencv-install/lib/cmake/opencv4 -DWITH_OPENVINO=ON
+          echo "=== Checking HAVE_OPENVINO in CMakeCache ==="
+          grep -i "openvino\|HAVE_OPENVINO" build/CMakeCache.txt || true
 
       - name: Build
         run: cmake --build build --parallel $(nproc)
@@ -432,6 +437,9 @@ jobs:
           # Copy OpenVINO libs (apt 安装到系统路径)
           cp /usr/lib/x86_64-linux-gnu/libopenvino*.so* AppDir/usr/lib/ 2>/dev/null || true
           cp /usr/lib/x86_64-linux-gnu/libtbb*.so* AppDir/usr/lib/ 2>/dev/null || true
+          # OpenVINO plugins
+          cp -r /usr/lib/x86_64-linux-gnu/openvino-2023.3.0/* AppDir/usr/lib/ 2>/dev/null || true
+          cp /usr/lib/x86_64-linux-gnu/libngraph*.so* AppDir/usr/lib/ 2>/dev/null || true
 
           # Copy OpenCV libs
           cp /opt/opencv-install/lib/*.so* AppDir/usr/lib/ 2>/dev/null || true
@@ -508,7 +516,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /opt/opencv-install
-          key: opencv-4.10.0-cuda124-linux-v2
+          key: opencv-4.10.0-cuda124-linux-v3
 
       - name: Build OpenCV with CUDA
         if: steps.cache-opencv.outputs.cache-hit != 'true'
@@ -532,7 +540,9 @@ jobs:
             -DWITH_CUDA=ON \
             -DWITH_CUDNN=ON \
             -DOPENCV_DNN_CUDA=ON \
-            -DCUDA_ARCH_BIN="7.5;8.0;8.6;8.9;9.0"
+            -DCUDA_ARCH_BIN="7.5;8.0;8.6;8.9;9.0" \
+            -DWITH_PROTOBUF=ON \
+            -DBUILD_PROTOBUF=ON
           cmake --build opencv-build --parallel $(nproc)
           sudo cmake --install opencv-build
 
