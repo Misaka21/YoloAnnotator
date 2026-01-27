@@ -27,19 +27,6 @@ QVector<InferenceBackend> YoloDetector::availableBackends()
     backends.append(InferenceBackend::OpenVINO_GPU);
 #endif
 
-#ifdef HAVE_CUDA
-    // CUDA 运行时检测
-    try {
-        int cudaDevices = cv::cuda::getCudaEnabledDeviceCount();
-        if (cudaDevices > 0) {
-            backends.append(InferenceBackend::CUDA);
-            backends.append(InferenceBackend::CUDA_FP16);
-        }
-    } catch (...) {
-        // CUDA 不可用
-    }
-#endif
-
     return backends;
 }
 
@@ -73,6 +60,14 @@ bool YoloDetector::loadModel(const QString& onnxPath)
         emit errorOccurred(QString("Model file not found: %1").arg(onnxPath));
         return false;
     }
+
+    // 先卸载旧模型
+    if (isLoaded()) {
+        unloadModel();
+    }
+
+    // 重置输入尺寸为默认值，稍后从模型获取
+    m_inputSize = QSize(640, 640);
 
     try {
         m_net = cv::dnn::readNetFromONNX(onnxPath.toStdString());
@@ -170,6 +165,21 @@ bool YoloDetector::analyzeModel()
     if (m_net.empty()) return false;
 
     try {
+        // 尝试从模型获取输入尺寸
+        std::vector<cv::dnn::MatShape> inputShapes;
+        std::vector<cv::dnn::MatShape> outputShapes;
+        m_net.getLayerShapes(cv::dnn::MatShape(), 0, inputShapes, outputShapes);
+
+        if (!inputShapes.empty() && inputShapes[0].size() == 4) {
+            // NCHW 格式: [batch, channels, height, width]
+            int inputH = inputShapes[0][2];
+            int inputW = inputShapes[0][3];
+            if (inputH > 0 && inputW > 0) {
+                m_inputSize = QSize(inputW, inputH);
+                qDebug() << "Model input size from ONNX:" << inputW << "x" << inputH;
+            }
+        }
+
         // Create a dummy input to get output shape
         cv::Mat dummy(m_inputSize.height(), m_inputSize.width(), CV_8UC3, cv::Scalar(114, 114, 114));
         cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
