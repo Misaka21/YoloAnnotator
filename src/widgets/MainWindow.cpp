@@ -1159,11 +1159,25 @@ void MainWindow::loadImagesFromPath(const QString& imagePath) {
     }
 
     if (labelsDir.isEmpty()) {
-        // 创建 labels 目录
-        QDir parent(imagePath);
-        parent.cdUp();
-        labelsDir = parent.absolutePath() + "/labels";
-        QDir().mkpath(labelsDir);
+        // 没有找到标签目录，询问用户
+        QMessageBox::StandardButton reply = QMessageBox::question(this, "标签目录",
+            "未找到标签目录。\n\n"
+            "是否选择已有的标签目录?\n"
+            "(选择\"否\"将创建新的 labels 目录)",
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::Yes);
+
+        if (reply == QMessageBox::Yes) {
+            labelsDir = QFileDialog::getExistingDirectory(this, "选择标签目录",
+                QFileInfo(imagePath).absolutePath());
+        }
+
+        if (labelsDir.isEmpty()) {
+            // 用户取消或选择创建新目录
+            QDir parent(imagePath);
+            parent.cdUp();
+            labelsDir = parent.absolutePath() + "/labels";
+            QDir().mkpath(labelsDir);
+        }
     }
 
     m_labelsFolder = labelsDir;
