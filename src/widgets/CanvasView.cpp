@@ -7,6 +7,7 @@
 #include <QScrollBar>
 #include <QContextMenuEvent>
 #include <QTextDocument>
+#include <QFile>
 #include <cmath>
 
 CanvasView::CanvasView(QWidget* parent)
@@ -67,12 +68,23 @@ void CanvasView::setImage(const QImage& image) {
 }
 
 void CanvasView::setImage(const QString& imagePath) {
-    QImage img(imagePath);
-    if (!img.isNull()) {
+    // 使用 QFile 读取以正确处理特殊字符（如中括号[]）
+    QFile file(imagePath);
+    if (!file.open(QIODevice::ReadOnly)) {
+        qWarning() << "Failed to open image file:" << imagePath;
+        emit imageLoadFailed(imagePath);
+        return;
+    }
+
+    QByteArray data = file.readAll();
+    file.close();
+
+    QImage img;
+    if (img.loadFromData(data)) {
         m_imagePath = imagePath;
         setImage(img);
     } else {
-        qWarning() << "Failed to load image:" << imagePath;
+        qWarning() << "Failed to decode image:" << imagePath;
         emit imageLoadFailed(imagePath);
     }
 }
