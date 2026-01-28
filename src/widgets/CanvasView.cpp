@@ -8,6 +8,8 @@
 #include <QContextMenuEvent>
 #include <QTextDocument>
 #include <QFile>
+#include <opencv2/imgcodecs.hpp>
+#include <opencv2/imgproc.hpp>
 #include <cmath>
 
 CanvasView::CanvasView(QWidget* parent)
@@ -84,8 +86,20 @@ void CanvasView::setImage(const QString& imagePath) {
         m_imagePath = imagePath;
         setImage(img);
     } else {
-        qWarning() << "Failed to decode image:" << imagePath;
-        emit imageLoadFailed(imagePath);
+        // Qt 解码失败，尝试使用 OpenCV 作为后备
+        qDebug() << "Qt failed to decode, trying OpenCV:" << imagePath;
+        std::vector<uchar> buffer(data.begin(), data.end());
+        cv::Mat mat = cv::imdecode(buffer, cv::IMREAD_COLOR);
+        if (!mat.empty()) {
+            // BGR -> RGB
+            cv::cvtColor(mat, mat, cv::COLOR_BGR2RGB);
+            img = QImage(mat.data, mat.cols, mat.rows, mat.step, QImage::Format_RGB888).copy();
+            m_imagePath = imagePath;
+            setImage(img);
+        } else {
+            qWarning() << "Failed to decode image (Qt and OpenCV both failed):" << imagePath;
+            emit imageLoadFailed(imagePath);
+        }
     }
 }
 
