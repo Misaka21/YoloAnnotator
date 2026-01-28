@@ -118,6 +118,7 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
 
 MainWindow::~MainWindow() {
     stopStatusCheck();
+    stopBatchAnnotate();
     if (m_modified && m_autoSave) saveCurrentAnnotation();
 }
 
@@ -334,6 +335,10 @@ void MainWindow::onOpenFolder() {
     QString dir = QFileDialog::getExistingDirectory(this, "选择图片文件夹", m_currentFolder);
     if (dir.isEmpty()) return;
     if (m_modified && m_autoSave) saveCurrentAnnotation();
+
+    // 停止所有后台操作
+    stopBatchAnnotate();
+    stopStatusCheck();
 
     // 优先检测 YAML 项目文件
     QString yamlPath = findYamlInFolder(dir);
@@ -966,6 +971,26 @@ void MainWindow::onStopBatchAnnotate() {
     m_statusLabel->setText("正在停止...");
 }
 
+void MainWindow::stopBatchAnnotate() {
+    if (m_batchWorker) {
+        m_batchWorker->requestStop();
+        // 断开信号连接，防止切换文件夹后旧信号被处理
+        disconnect(m_batchWorker, nullptr, this, nullptr);
+    }
+    if (m_batchThread && m_batchThread->isRunning()) {
+        m_batchThread->quit();
+        if (!m_batchThread->wait(3000)) {
+            m_batchThread->terminate();
+            m_batchThread->wait();
+        }
+    }
+    m_batchRunning = false;
+    m_batchWorker = nullptr;
+    m_batchThread = nullptr;
+    m_stopBatchAction->setVisible(false);
+    m_batchAnnotateAction->setEnabled(true);
+}
+
 void MainWindow::onAutoAnnotateUnannotated() {
     if (!m_detector->isLoaded()) {
         QMessageBox::warning(this, "警告", "请先加载ONNX模型");
@@ -1046,6 +1071,10 @@ void MainWindow::onOpenProject() {
     if (path.isEmpty()) return;
 
     if (m_modified && m_autoSave) saveCurrentAnnotation();
+
+    // 停止所有后台操作
+    stopBatchAnnotate();
+    stopStatusCheck();
 
     DatasetConfig config;
     if (!config.loadYAML(path)) {

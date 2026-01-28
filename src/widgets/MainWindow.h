@@ -204,6 +204,7 @@ private:
     void updateFileList();
     void startStatusCheck();     // 启动后台检查标注状态
     void stopStatusCheck();      // 停止后台检查
+    void stopBatchAnnotate();    // 停止批量标注
     void updateAnnotationList();
     void updateClassList();
     void updateStatusBar();
