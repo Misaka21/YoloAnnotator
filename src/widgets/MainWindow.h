@@ -113,6 +113,7 @@ private slots:
     // 工具
     void onModeChanged(QAction* action);
     void onZoomChanged(double scale);
+    void onImageLoadFailed(const QString& path);
 
     // 骨架配置
     void onEditSkeletonConfig();

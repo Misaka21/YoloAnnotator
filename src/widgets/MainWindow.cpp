@@ -324,6 +324,7 @@ void MainWindow::setupConnections() {
     connect(m_canvasView, &CanvasView::zoomChanged, this, &MainWindow::onZoomChanged);
     connect(m_canvasView, &CanvasView::classSelectRequested, this, &MainWindow::onClassSelectRequested);
     connect(m_canvasView, &CanvasView::contextMenuRequested, this, &MainWindow::onContextMenuRequested);
+    connect(m_canvasView, &CanvasView::imageLoadFailed, this, &MainWindow::onImageLoadFailed);
     connect(m_classList, &QListWidget::itemDoubleClicked, this, &MainWindow::onClassListDoubleClicked);
     connect(m_formatCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [this](int i){ m_annotationIO.setFormat(i==0 ? AnnotationIO::Detection : AnnotationIO::Pose); });
@@ -483,6 +484,11 @@ void MainWindow::onModeChanged(QAction* action) {
 }
 
 void MainWindow::onZoomChanged(double scale) { m_zoomLabel->setText(QString("%1%").arg(int(scale * 100))); }
+
+void MainWindow::onImageLoadFailed(const QString& path) {
+    m_statusLabel->setText(QString("图片加载失败: %1").arg(QFileInfo(path).fileName()));
+    QMessageBox::warning(this, "加载失败", QString("无法加载图片:\n%1\n\n可能原因:\n- 文件已损坏\n- 格式不支持\n- 文件路径包含特殊字符").arg(path));
+}
 
 void MainWindow::onEditSkeletonConfig() {
     SkeletonConfigDialog dialog(this);

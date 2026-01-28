@@ -91,6 +91,7 @@ signals:
     void mouseMoved(const QPointF& imagePos);
     void classSelectRequested(int annotationIndex, QPoint globalPos);  // 请求选择类别
     void contextMenuRequested(int annotationIndex, const QPoint& globalPos);  // 右键菜单
+    void imageLoadFailed(const QString& path);  // 图片加载失败
 
 protected:
     void wheelEvent(QWheelEvent* event) override;

@@ -71,6 +71,9 @@ void CanvasView::setImage(const QString& imagePath) {
     if (!img.isNull()) {
         m_imagePath = imagePath;
         setImage(img);
+    } else {
+        qWarning() << "Failed to load image:" << imagePath;
+        emit imageLoadFailed(imagePath);
     }
 }
 
