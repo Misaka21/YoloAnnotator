@@ -35,6 +35,7 @@ public slots:
 
 signals:
     void fileStatusReady(int index, bool hasAnnotation);
+    void progressUpdated(int current, int total);
     void finished();
 
 private:
@@ -137,6 +138,7 @@ private slots:
 
     // 后台标注状态检查
     void onFileStatusReady(int index, bool hasAnnotation);
+    void onStatusCheckProgress(int current, int total);
     void onStatusCheckFinished();
 
 private:

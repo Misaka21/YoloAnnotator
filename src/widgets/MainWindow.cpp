@@ -86,7 +86,8 @@ void BatchAnnotateWorker::process() {
 
 // AnnotationStatusWorker 实现
 void AnnotationStatusWorker::process() {
-    for (int i = 0; i < m_files.size(); ++i) {
+    int total = m_files.size();
+    for (int i = 0; i < total; ++i) {
         if (m_stop) break;
 
         QString fileName = m_files[i];
@@ -99,6 +100,11 @@ void AnnotationStatusWorker::process() {
 
         bool hasAnnotation = QFileInfo(txtPath).exists() && QFileInfo(txtPath).size() > 0;
         emit fileStatusReady(i, hasAnnotation);
+
+        // 每处理 50 个文件或最后一个时发送进度
+        if ((i + 1) % 50 == 0 || i == total - 1) {
+            emit progressUpdated(i + 1, total);
+        }
     }
 
     emit finished();
@@ -617,6 +623,8 @@ void MainWindow::updateFileList() {
 void MainWindow::startStatusCheck() {
     if (m_imageFiles.isEmpty()) return;
 
+    m_statusLabel->setText(QString("正在检查标注状态... 0/%1").arg(m_imageFiles.size()));
+
     m_statusThread = new QThread(this);
     m_statusWorker = new AnnotationStatusWorker();
     m_statusWorker->setFiles(m_imageFiles, m_currentFolder, m_labelsFolder);
@@ -624,6 +632,7 @@ void MainWindow::startStatusCheck() {
 
     connect(m_statusThread, &QThread::started, m_statusWorker, &AnnotationStatusWorker::process);
     connect(m_statusWorker, &AnnotationStatusWorker::fileStatusReady, this, &MainWindow::onFileStatusReady);
+    connect(m_statusWorker, &AnnotationStatusWorker::progressUpdated, this, &MainWindow::onStatusCheckProgress);
     connect(m_statusWorker, &AnnotationStatusWorker::finished, this, &MainWindow::onStatusCheckFinished);
     connect(m_statusWorker, &AnnotationStatusWorker::finished, m_statusThread, &QThread::quit);
     connect(m_statusThread, &QThread::finished, m_statusWorker, &QObject::deleteLater);
@@ -665,8 +674,12 @@ void MainWindow::onFileStatusReady(int index, bool hasAnnotation) {
     }
 }
 
+void MainWindow::onStatusCheckProgress(int current, int total) {
+    m_statusLabel->setText(QString("正在检查标注状态... %1/%2").arg(current).arg(total));
+}
+
 void MainWindow::onStatusCheckFinished() {
-    // 后台检查完成，可以在这里做一些清理或提示
+    updateStatusBar();  // 恢复正常状态栏显示
 }
 
 void MainWindow::updateAnnotationList() {
@@ -961,20 +974,31 @@ void MainWindow::onAutoAnnotateUnannotated() {
         return;
     }
 
-    // 找出未标注的图片
+    // 找出未标注的图片（显示进度）
     QStringList unannotated;
-    for (const QString& file : m_imageFiles) {
+    int total = m_imageFiles.size();
+    for (int i = 0; i < total; ++i) {
+        const QString& file = m_imageFiles[i];
         QString imagePath = m_currentFolder + "/" + file;
         QString txtPath = getAnnotationPath(imagePath);
         if (!QFile::exists(txtPath)) {
             unannotated.append(file);
         }
+
+        // 每处理 100 个文件更新一次状态
+        if ((i + 1) % 100 == 0 || i == total - 1) {
+            m_statusLabel->setText(QString("正在查找未标注图片... %1/%2").arg(i + 1).arg(total));
+            QCoreApplication::processEvents();
+        }
     }
 
     if (unannotated.isEmpty()) {
+        m_statusLabel->setText("就绪");
         QMessageBox::information(this, "提示", "所有图片都已有标注");
         return;
     }
+
+    m_statusLabel->setText("就绪");
 
     auto reply = QMessageBox::question(this, "标注未标注图片",
         QString("找到 %1 张未标注图片\n\n是否进行自动标注?").arg(unannotated.size()),
