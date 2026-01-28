@@ -79,10 +79,6 @@ bool YoloDetector::loadModel(const QString& onnxPath)
             return false;
         }
 
-        // 预热推理：第一次推理会初始化计算图，比较慢
-        // 在这里做一次预热，避免用户第一次检测时卡顿
-        warmup();
-
         emit modelLoaded(onnxPath);
         return true;
 
@@ -159,128 +155,87 @@ void YoloDetector::setBackend(InferenceBackend backend)
         m_net.setPreferableTarget(cv::dnn::DNN_TARGET_CPU);
         break;
     }
-
-    // 切换后端后需要重新预热（仅在模型已完全加载时）
-    if (m_modelType != ModelType::Unknown) {
-        warmup();
-    }
 }
 
 bool YoloDetector::analyzeModel()
 {
-    if (m_net.empty()) return false;
+    if (m_net.empty() || m_modelPath.isEmpty()) return false;
 
-    try {
-        // 先用默认 640x640 尝试推理，获取输出 anchor 数量
-        cv::Mat dummy(640, 640, CV_8UC3, cv::Scalar(114, 114, 114));
-        cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
-        m_net.setInput(blob);
+    // 常见的 YOLO 输入尺寸
+    std::vector<int> candidateSizes = {640, 1280, 320, 512, 960};
 
-        std::vector<cv::Mat> outputs;
-        m_net.forward(outputs);
+    for (int size : candidateSizes) {
+        try {
+            cv::Mat dummy(size, size, CV_8UC3, cv::Scalar(114, 114, 114));
+            cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
+            m_net.setInput(blob);
 
-        if (outputs.empty()) {
-            emit errorOccurred("Model has no outputs");
-            return false;
-        }
+            std::vector<cv::Mat> outputs;
+            m_net.forward(outputs);
 
-        cv::Mat& output = outputs[0];
-
-        // Get dimensions
-        int dims = output.dims;
-        if (dims != 3) {
-            emit errorOccurred(QString("Unexpected output dimensions: %1").arg(dims));
-            return false;
-        }
-
-        int batch = output.size[0];
-        int numOutputs = output.size[1];
-        int numAnchors = output.size[2];
-
-        qDebug() << "Initial output shape (640 input):" << batch << "x" << numOutputs << "x" << numAnchors;
-
-        // 根据 anchor 数量推断实际输入尺寸
-        // YOLO anchor 公式: (size/8)² + (size/16)² + (size/32)² = anchors
-        // 640 -> 8400, 1280 -> 33600, 320 -> 2100
-        // 如果 anchor 数量不是 8400，说明模型期望不同的输入尺寸
-        if (numAnchors != 8400) {
-            // 反推输入尺寸: anchors = size² * (1/64 + 1/256 + 1/1024) = size² * 0.021484375
-            // size = sqrt(anchors / 0.021484375)
-            double ratio = 1.0/64.0 + 1.0/256.0 + 1.0/1024.0;  // ≈ 0.021484375
-            int inferredSize = static_cast<int>(std::sqrt(numAnchors / ratio) + 0.5);
-            // 对齐到 32 的倍数
-            inferredSize = (inferredSize / 32) * 32;
-
-            if (inferredSize > 0 && inferredSize != 640) {
-                m_inputSize = QSize(inferredSize, inferredSize);
-                qDebug() << "Inferred input size from anchors:" << inferredSize << "x" << inferredSize;
-
-                // 用正确的尺寸重新推理
-                cv::Mat dummy2(inferredSize, inferredSize, CV_8UC3, cv::Scalar(114, 114, 114));
-                cv::Mat blob2 = cv::dnn::blobFromImage(dummy2, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
-                m_net.setInput(blob2);
-                outputs.clear();
-                m_net.forward(outputs);
-
-                if (!outputs.empty()) {
-                    output = outputs[0];
-                    numOutputs = output.size[1];
-                    numAnchors = output.size[2];
-                    qDebug() << "Corrected output shape:" << output.size[0] << "x" << numOutputs << "x" << numAnchors;
-                }
+            if (outputs.empty()) {
+                reloadNetForRetry();
+                continue;
             }
-        } else {
-            m_inputSize = QSize(640, 640);
+
+            cv::Mat& output = outputs[0];
+
+            // Get dimensions
+            int dims = output.dims;
+            if (dims != 3) {
+                reloadNetForRetry();
+                continue;
+            }
+
+            int numOutputs = output.size[1];
+            int numAnchors = output.size[2];
+
+            // 验证 anchor 数量是否合理（应该与输入尺寸匹配）
+            // size=640 -> 8400, size=1280 -> 33600
+            double expectedAnchors = (size/8.0)*(size/8.0) + (size/16.0)*(size/16.0) + (size/32.0)*(size/32.0);
+            if (std::abs(numAnchors - expectedAnchors) > 100) {
+                reloadNetForRetry();
+                continue;  // anchor 数量不匹配，尝试下一个尺寸
+            }
+
+            m_inputSize = QSize(size, size);
+            qDebug() << "Model input size detected:" << size << "x" << size << "anchors:" << numAnchors;
+
+            // Determine model type
+            if ((numOutputs - 5) > 0 && (numOutputs - 5) % 3 == 0) {
+                m_modelType = ModelType::Pose;
+                m_numKeypoints = (numOutputs - 5) / 3;
+                m_numClasses = 1;
+                qDebug() << "Detected Pose model with" << m_numKeypoints << "keypoints";
+            } else {
+                m_modelType = ModelType::Detection;
+                m_numClasses = numOutputs - 4;
+                m_numKeypoints = 0;
+                qDebug() << "Detected Detection model with" << m_numClasses << "classes";
+            }
+
+            return true;
+
+        } catch (const cv::Exception& e) {
+            qDebug() << "Input size" << size << "failed:" << e.what();
+            // 异常后网络可能损坏，需要重新加载
+            reloadNetForRetry();
+            continue;
         }
-
-        qDebug() << "Final model input size:" << m_inputSize.width() << "x" << m_inputSize.height();
-
-        // YOLOv8/v11 output shape: [1, numOutputs, numAnchors]
-        // Detection: numOutputs = 4 + numClasses (e.g., 84 for COCO)
-        // Pose: numOutputs = 4 + 1 + numKeypoints * 3 (e.g., 56 for COCO 17-keypoint)
-
-        // Determine model type based on output dimensions
-        // Detection: 4 + numClasses (no keypoints)
-        // Pose: 4 + 1 + numKeypoints * 3
-
-        // Check if it's a Pose model
-        // Pose model has (numOutputs - 5) divisible by 3
-        if ((numOutputs - 5) > 0 && (numOutputs - 5) % 3 == 0) {
-            m_modelType = ModelType::Pose;
-            m_numKeypoints = (numOutputs - 5) / 3;
-            m_numClasses = 1;  // Pose models typically single class
-            qDebug() << "Detected Pose model with" << m_numKeypoints << "keypoints";
-        } else {
-            m_modelType = ModelType::Detection;
-            m_numClasses = numOutputs - 4;
-            m_numKeypoints = 0;
-            qDebug() << "Detected Detection model with" << m_numClasses << "classes";
-        }
-
-        return true;
-
-    } catch (const cv::Exception& e) {
-        emit errorOccurred(QString("Failed to analyze model: %1").arg(e.what()));
-        return false;
     }
+
+    emit errorOccurred("无法确定模型输入尺寸，请检查模型格式");
+    return false;
 }
 
-void YoloDetector::warmup()
+void YoloDetector::reloadNetForRetry()
 {
-    if (m_net.empty()) return;
-
+    // 重新加载模型以重置网络状态（用于 analyzeModel 中尝试不同输入尺寸）
     try {
-        // 创建一个假输入进行预热推理
-        cv::Mat dummy(m_inputSize.height(), m_inputSize.width(), CV_8UC3, cv::Scalar(114, 114, 114));
-        cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
-        m_net.setInput(blob);
-
-        std::vector<cv::Mat> outputs;
-        m_net.forward(outputs);
-
-        qDebug() << "Model warmup completed";
+        m_net = cv::dnn::readNetFromONNX(m_modelPath.toStdString());
+        setBackend(m_backend);
     } catch (const cv::Exception& e) {
-        qWarning() << "Warmup failed:" << e.what();
+        qWarning() << "Failed to reload model for retry:" << e.what();
     }
 }
 

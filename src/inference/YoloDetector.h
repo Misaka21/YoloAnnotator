@@ -116,7 +116,7 @@ private:
     QVector<Annotation> applyNMS(QVector<Annotation>& detections);
     QVector<Annotation> applyClassMapping(const QVector<Annotation>& detections);
     bool analyzeModel();
-    void warmup();  // 预热推理
+    void reloadNetForRetry();  // 重新加载模型以重置状态
 
     // 工具函数
     static cv::Mat qImageToMat(const QImage& image);
