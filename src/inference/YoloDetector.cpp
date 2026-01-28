@@ -66,9 +66,6 @@ bool YoloDetector::loadModel(const QString& onnxPath)
         unloadModel();
     }
 
-    // 重置输入尺寸为默认值，稍后从模型获取
-    m_inputSize = QSize(640, 640);
-
     try {
         m_net = cv::dnn::readNetFromONNX(onnxPath.toStdString());
 
@@ -174,23 +171,8 @@ bool YoloDetector::analyzeModel()
     if (m_net.empty()) return false;
 
     try {
-        // 尝试从模型获取输入尺寸
-        std::vector<cv::dnn::MatShape> inputShapes;
-        std::vector<cv::dnn::MatShape> outputShapes;
-        m_net.getLayerShapes(cv::dnn::MatShape(), 0, inputShapes, outputShapes);
-
-        if (!inputShapes.empty() && inputShapes[0].size() == 4) {
-            // NCHW 格式: [batch, channels, height, width]
-            int inputH = inputShapes[0][2];
-            int inputW = inputShapes[0][3];
-            if (inputH > 0 && inputW > 0) {
-                m_inputSize = QSize(inputW, inputH);
-                qDebug() << "Model input size from ONNX:" << inputW << "x" << inputH;
-            }
-        }
-
-        // Create a dummy input to get output shape
-        cv::Mat dummy(m_inputSize.height(), m_inputSize.width(), CV_8UC3, cv::Scalar(114, 114, 114));
+        // 先用默认 640x640 尝试推理，获取输出 anchor 数量
+        cv::Mat dummy(640, 640, CV_8UC3, cv::Scalar(114, 114, 114));
         cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
         m_net.setInput(blob);
 
@@ -202,9 +184,6 @@ bool YoloDetector::analyzeModel()
             return false;
         }
 
-        // YOLOv8/v11 output shape: [1, numOutputs, numAnchors]
-        // Detection: numOutputs = 4 + numClasses (e.g., 84 for COCO)
-        // Pose: numOutputs = 4 + 1 + numKeypoints * 3 (e.g., 56 for COCO 17-keypoint)
         cv::Mat& output = outputs[0];
 
         // Get dimensions
@@ -218,7 +197,47 @@ bool YoloDetector::analyzeModel()
         int numOutputs = output.size[1];
         int numAnchors = output.size[2];
 
-        qDebug() << "Model output shape:" << batch << "x" << numOutputs << "x" << numAnchors;
+        qDebug() << "Initial output shape (640 input):" << batch << "x" << numOutputs << "x" << numAnchors;
+
+        // 根据 anchor 数量推断实际输入尺寸
+        // YOLO anchor 公式: (size/8)² + (size/16)² + (size/32)² = anchors
+        // 640 -> 8400, 1280 -> 33600, 320 -> 2100
+        // 如果 anchor 数量不是 8400，说明模型期望不同的输入尺寸
+        if (numAnchors != 8400) {
+            // 反推输入尺寸: anchors = size² * (1/64 + 1/256 + 1/1024) = size² * 0.021484375
+            // size = sqrt(anchors / 0.021484375)
+            double ratio = 1.0/64.0 + 1.0/256.0 + 1.0/1024.0;  // ≈ 0.021484375
+            int inferredSize = static_cast<int>(std::sqrt(numAnchors / ratio) + 0.5);
+            // 对齐到 32 的倍数
+            inferredSize = (inferredSize / 32) * 32;
+
+            if (inferredSize > 0 && inferredSize != 640) {
+                m_inputSize = QSize(inferredSize, inferredSize);
+                qDebug() << "Inferred input size from anchors:" << inferredSize << "x" << inferredSize;
+
+                // 用正确的尺寸重新推理
+                cv::Mat dummy2(inferredSize, inferredSize, CV_8UC3, cv::Scalar(114, 114, 114));
+                cv::Mat blob2 = cv::dnn::blobFromImage(dummy2, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
+                m_net.setInput(blob2);
+                outputs.clear();
+                m_net.forward(outputs);
+
+                if (!outputs.empty()) {
+                    output = outputs[0];
+                    numOutputs = output.size[1];
+                    numAnchors = output.size[2];
+                    qDebug() << "Corrected output shape:" << output.size[0] << "x" << numOutputs << "x" << numAnchors;
+                }
+            }
+        } else {
+            m_inputSize = QSize(640, 640);
+        }
+
+        qDebug() << "Final model input size:" << m_inputSize.width() << "x" << m_inputSize.height();
+
+        // YOLOv8/v11 output shape: [1, numOutputs, numAnchors]
+        // Detection: numOutputs = 4 + numClasses (e.g., 84 for COCO)
+        // Pose: numOutputs = 4 + 1 + numKeypoints * 3 (e.g., 56 for COCO 17-keypoint)
 
         // Determine model type based on output dimensions
         // Detection: 4 + numClasses (no keypoints)
