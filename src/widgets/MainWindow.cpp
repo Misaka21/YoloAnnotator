@@ -97,7 +97,7 @@ void AnnotationStatusWorker::process() {
             txtPath = m_folder + "/" + QFileInfo(fileName).completeBaseName() + ".txt";
         }
 
-        bool hasAnnotation = QFile::exists(txtPath);
+        bool hasAnnotation = QFileInfo(txtPath).exists() && QFileInfo(txtPath).size() > 0;
         emit fileStatusReady(i, hasAnnotation);
     }
 
@@ -811,7 +811,7 @@ void MainWindow::onAutoAnnotateCurrent() {
         // 恢复文件列表状态
         if (m_currentIndex >= 0 && m_currentIndex < m_fileList->count()) {
             QString imgPath = m_currentFolder + "/" + m_imageFiles[m_currentIndex];
-            bool hasAnnotation = QFile::exists(getAnnotationPath(imgPath)) || !m_canvasView->annotations().isEmpty();
+            bool hasAnnotation = QFileInfo(getAnnotationPath(imgPath)).size() > 0 || !m_canvasView->annotations().isEmpty();
             QListWidgetItem* item = m_fileList->item(m_currentIndex);
             item->setText((hasAnnotation ? QString::fromUtf8("✓ ") : "   ") + m_imageFiles[m_currentIndex]);
             item->setForeground(hasAnnotation ? QColor(0, 180, 0) : palette().text().color());
