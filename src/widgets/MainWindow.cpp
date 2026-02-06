@@ -690,6 +690,8 @@ void MainWindow::onStatusCheckProgress(int current, int total) {
 }
 
 void MainWindow::onStatusCheckFinished() {
+    m_statusWorker = nullptr;
+    m_statusThread = nullptr;
     updateStatusBar();  // 恢复正常状态栏显示
 }
 
