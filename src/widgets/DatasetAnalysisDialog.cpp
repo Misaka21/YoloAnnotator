@@ -6,6 +6,8 @@
 #include <QGroupBox>
 #include <QLabel>
 #include <QPushButton>
+#include <QCheckBox>
+#include <QTabWidget>
 #include <QDir>
 #include <QPainter>
 #include <QApplication>
@@ -334,6 +336,188 @@ void BoxOverlayWidget::paintEvent(QPaintEvent*) {
     }
 }
 
+// ==================== ScaleDistributionWidget ====================
+
+ScaleDistributionWidget::ScaleDistributionWidget(QWidget* parent)
+    : QWidget(parent)
+{
+    setMinimumSize(300, 250);
+}
+
+void ScaleDistributionWidget::setData(const QMap<int, QVector<int>>& scaleData,
+                                       const QStringList& classNames,
+                                       const QSet<int>& visibleClasses) {
+    m_scaleData = scaleData;
+    m_classNames = classNames;
+    m_visibleClasses = visibleClasses;
+    update();
+}
+
+void ScaleDistributionWidget::paintEvent(QPaintEvent*) {
+    QPainter p(this);
+    p.setRenderHint(QPainter::Antialiasing);
+
+    // 收集可见类别
+    QVector<int> visibleIds;
+    for (auto it = m_scaleData.begin(); it != m_scaleData.end(); ++it) {
+        if (m_visibleClasses.contains(it.key()))
+            visibleIds.append(it.key());
+    }
+
+    if (visibleIds.isEmpty()) {
+        p.drawText(rect(), Qt::AlignCenter, "No data");
+        return;
+    }
+
+    const int marginLeft = 50;
+    const int marginRight = 20;
+    const int marginTop = 30;
+    const int marginBottom = 50;
+    const int legendHeight = 25;
+
+    int chartWidth = width() - marginLeft - marginRight;
+    int chartHeight = height() - marginTop - marginBottom - legendHeight;
+
+    // 计算最大总数
+    int maxTotal = 0;
+    for (int classId : visibleIds) {
+        const QVector<int>& counts = m_scaleData[classId];
+        int total = counts[0] + counts[1] + counts[2];
+        maxTotal = qMax(maxTotal, total);
+    }
+    if (maxTotal == 0) maxTotal = 1;
+
+    // 颜色: Small=蓝, Medium=绿, Large=橙
+    const QColor colorSmall(66, 133, 244);
+    const QColor colorMedium(52, 168, 83);
+    const QColor colorLarge(251, 153, 2);
+
+    // 绘制坐标轴
+    p.setPen(Qt::black);
+    p.drawLine(marginLeft, height() - marginBottom - legendHeight,
+               width() - marginRight, height() - marginBottom - legendHeight);
+    p.drawLine(marginLeft, marginTop, marginLeft, height() - marginBottom - legendHeight);
+
+    // Y轴标签
+    p.setFont(QFont("Segoe UI", 8));
+    for (int i = 0; i <= 5; ++i) {
+        int y = height() - marginBottom - legendHeight - (chartHeight * i / 5);
+        int val = maxTotal * i / 5;
+        p.drawText(0, y - 8, marginLeft - 5, 16, Qt::AlignRight | Qt::AlignVCenter, QString::number(val));
+        p.setPen(QColor(200, 200, 200));
+        p.drawLine(marginLeft, y, width() - marginRight, y);
+        p.setPen(Qt::black);
+    }
+
+    // 绘制堆叠柱状图
+    int barCount = visibleIds.size();
+    double barWidth = double(chartWidth) / barCount * 0.7;
+    double spacing = double(chartWidth) / barCount;
+
+    int baseY = height() - marginBottom - legendHeight;
+
+    for (int i = 0; i < barCount; ++i) {
+        int classId = visibleIds[i];
+        const QVector<int>& counts = m_scaleData[classId];
+        int smallCount = counts[0];
+        int mediumCount = counts[1];
+        int largeCount = counts[2];
+        int total = smallCount + mediumCount + largeCount;
+
+        double x = marginLeft + spacing * i + (spacing - barWidth) / 2;
+
+        // Small 段 (底部)
+        double hSmall = double(smallCount) / maxTotal * chartHeight;
+        double hMedium = double(mediumCount) / maxTotal * chartHeight;
+        double hLarge = double(largeCount) / maxTotal * chartHeight;
+
+        double yOffset = baseY;
+
+        // Small
+        if (smallCount > 0) {
+            p.setBrush(colorSmall);
+            p.setPen(Qt::NoPen);
+            p.drawRect(QRectF(x, yOffset - hSmall, barWidth, hSmall));
+            // 段内数量
+            if (hSmall > 14) {
+                p.setPen(Qt::white);
+                p.setFont(QFont("Segoe UI", 7));
+                p.drawText(QRectF(x, yOffset - hSmall, barWidth, hSmall),
+                           Qt::AlignCenter, QString::number(smallCount));
+            }
+            yOffset -= hSmall;
+        }
+
+        // Medium
+        if (mediumCount > 0) {
+            p.setBrush(colorMedium);
+            p.setPen(Qt::NoPen);
+            p.drawRect(QRectF(x, yOffset - hMedium, barWidth, hMedium));
+            if (hMedium > 14) {
+                p.setPen(Qt::white);
+                p.setFont(QFont("Segoe UI", 7));
+                p.drawText(QRectF(x, yOffset - hMedium, barWidth, hMedium),
+                           Qt::AlignCenter, QString::number(mediumCount));
+            }
+            yOffset -= hMedium;
+        }
+
+        // Large
+        if (largeCount > 0) {
+            p.setBrush(colorLarge);
+            p.setPen(Qt::NoPen);
+            p.drawRect(QRectF(x, yOffset - hLarge, barWidth, hLarge));
+            if (hLarge > 14) {
+                p.setPen(Qt::white);
+                p.setFont(QFont("Segoe UI", 7));
+                p.drawText(QRectF(x, yOffset - hLarge, barWidth, hLarge),
+                           Qt::AlignCenter, QString::number(largeCount));
+            }
+            yOffset -= hLarge;
+        }
+
+        // 柱顶总数
+        p.setPen(Qt::black);
+        p.setFont(QFont("Segoe UI", 8));
+        double topY = baseY - hSmall - hMedium - hLarge;
+        p.drawText(QRectF(x, topY - 18, barWidth, 16), Qt::AlignCenter, QString::number(total));
+
+        // X轴类别名
+        QString label = (classId < m_classNames.size()) ? m_classNames[classId] : QString::number(classId);
+        if (label.length() > 6) label = label.left(5) + "..";
+        p.drawText(QRectF(x - 5, baseY + 5, barWidth + 10, 40),
+                   Qt::AlignHCenter | Qt::AlignTop, label);
+    }
+
+    // Y轴标题
+    p.save();
+    p.translate(15, marginTop + chartHeight / 2);
+    p.rotate(-90);
+    p.drawText(QRect(-50, -10, 100, 20), Qt::AlignCenter, "instances");
+    p.restore();
+
+    // 图例
+    p.setFont(QFont("Segoe UI", 9));
+    int legendY = height() - legendHeight;
+    int legendX = marginLeft + 10;
+    int boxSize = 12;
+    int legendSpacing = 20;
+
+    auto drawLegend = [&](const QColor& color, const QString& text) {
+        p.setBrush(color);
+        p.setPen(Qt::NoPen);
+        p.drawRect(legendX, legendY + 4, boxSize, boxSize);
+        p.setPen(Qt::black);
+        QRect textRect(legendX + boxSize + 4, legendY, 120, legendHeight);
+        p.drawText(textRect, Qt::AlignVCenter | Qt::AlignLeft, text);
+        legendX += boxSize + 4 + p.fontMetrics().horizontalAdvance(text) + legendSpacing;
+    };
+
+    drawLegend(colorSmall, "Small (P3)");
+    drawLegend(colorMedium, "Medium (P4)");
+    drawLegend(colorLarge, "Large (P5)");
+}
+
 // ==================== DatasetAnalysisDialog ====================
 
 DatasetAnalysisDialog::DatasetAnalysisDialog(QWidget* parent)
@@ -352,7 +536,14 @@ void DatasetAnalysisDialog::setupUI() {
     m_statusLabel->setAlignment(Qt::AlignCenter);
     mainLayout->addWidget(m_statusLabel);
 
-    // 2x2 网格布局
+    // Tab Widget
+    m_tabWidget = new QTabWidget();
+    mainLayout->addWidget(m_tabWidget, 1);
+
+    // ===== Tab 1: 总览 (Overview) =====
+    auto* overviewTab = new QWidget();
+    auto* overviewLayout = new QVBoxLayout(overviewTab);
+
     auto* gridLayout = new QGridLayout();
     gridLayout->setSpacing(10);
 
@@ -386,7 +577,37 @@ void DatasetAnalysisDialog::setupUI() {
     sizeLayout->addWidget(m_sizeHeatmap);
     gridLayout->addWidget(sizeGroup, 1, 1);
 
-    mainLayout->addLayout(gridLayout, 1);
+    overviewLayout->addLayout(gridLayout);
+    m_tabWidget->addTab(overviewTab, "总览 (Overview)");
+
+    // ===== Tab 2: 尺度分布 (Scale) =====
+    auto* scaleTab = new QWidget();
+    auto* scaleLayout = new QVBoxLayout(scaleTab);
+
+    // 复选框面板
+    auto* filterLayout = new QHBoxLayout();
+    auto* selectAllBtn = new QPushButton("全选");
+    auto* clearAllBtn = new QPushButton("清除");
+    selectAllBtn->setFixedWidth(60);
+    clearAllBtn->setFixedWidth(60);
+    connect(selectAllBtn, &QPushButton::clicked, this, &DatasetAnalysisDialog::onSelectAll);
+    connect(clearAllBtn, &QPushButton::clicked, this, &DatasetAnalysisDialog::onClearAll);
+    filterLayout->addWidget(selectAllBtn);
+    filterLayout->addWidget(clearAllBtn);
+    filterLayout->addStretch();
+    scaleLayout->addLayout(filterLayout);
+
+    // 复选框容器 (类别复选框将在 analyze() 中动态创建)
+    m_classCheckBoxes.clear();
+
+    // 堆叠柱状图
+    auto* scaleGroup = new QGroupBox("Scale Distribution");
+    auto* scaleGroupLayout = new QVBoxLayout(scaleGroup);
+    m_scaleChart = new ScaleDistributionWidget();
+    scaleGroupLayout->addWidget(m_scaleChart);
+    scaleLayout->addWidget(scaleGroup, 1);
+
+    m_tabWidget->addTab(scaleTab, "尺度分布 (Scale)");
 
     // 底部按钮
     auto* buttonLayout = new QHBoxLayout();
@@ -429,6 +650,7 @@ void DatasetAnalysisDialog::loadAllAnnotations() {
     m_sizes.clear();
     m_boxes.clear();
     m_boxClassIds.clear();
+    m_scaleDistribution.clear();
     m_imageCount = 0;
 
     QDir labelsDir(m_labelsPath);
@@ -450,6 +672,18 @@ void DatasetAnalysisDialog::loadAllAnnotations() {
             m_sizes.append(QPointF(box.width(), box.height()));
             m_boxes.append(QRectF(box.left(), box.top(), box.width(), box.height()));
             m_boxClassIds.append(classId);
+
+            // 尺度分类
+            if (!m_scaleDistribution.contains(classId))
+                m_scaleDistribution[classId] = QVector<int>(3, 0);
+
+            double scale = std::sqrt(box.width() * box.height());
+            if (scale < 0.05)
+                m_scaleDistribution[classId][0]++; // Small
+            else if (scale < 0.15)
+                m_scaleDistribution[classId][1]++; // Medium
+            else
+                m_scaleDistribution[classId][2]++; // Large
         }
     }
 }
@@ -459,4 +693,57 @@ void DatasetAnalysisDialog::updateCharts() {
     m_centerHeatmap->setPoints(m_centers);
     m_sizeHeatmap->setPoints(m_sizes);
     m_boxOverlay->setBoxes(m_boxes, m_boxClassIds, m_classNames);
+
+    // 构建类别复选框
+    // 清除旧复选框
+    for (QCheckBox* cb : m_classCheckBoxes)
+        cb->deleteLater();
+    m_classCheckBoxes.clear();
+
+    // 找到 Scale tab 中 filterLayout 的下方插入复选框
+    auto* scaleTab = m_tabWidget->widget(1);
+    auto* scaleLayout = qobject_cast<QVBoxLayout*>(scaleTab->layout());
+
+    // 创建复选框流式布局
+    auto* checkboxWidget = new QWidget();
+    auto* checkboxLayout = new QHBoxLayout(checkboxWidget);
+    checkboxLayout->setContentsMargins(0, 0, 0, 0);
+    checkboxLayout->setSpacing(8);
+
+    QList<int> classIds = m_scaleDistribution.keys();
+    for (int classId : classIds) {
+        QString label = (classId < m_classNames.size()) ? m_classNames[classId] : QString::number(classId);
+        auto* cb = new QCheckBox(label, checkboxWidget);
+        cb->setChecked(true);
+        connect(cb, &QCheckBox::toggled, this, &DatasetAnalysisDialog::onClassFilterChanged);
+        checkboxLayout->addWidget(cb);
+        m_classCheckBoxes.append(cb);
+    }
+    checkboxLayout->addStretch();
+
+    // 插入在 filterLayout 和 scaleGroup 之间 (index 1)
+    scaleLayout->insertWidget(1, checkboxWidget);
+
+    // 初始化尺度图表
+    onClassFilterChanged();
+}
+
+void DatasetAnalysisDialog::onClassFilterChanged() {
+    QSet<int> visibleClasses;
+    QList<int> classIds = m_scaleDistribution.keys();
+    for (int i = 0; i < m_classCheckBoxes.size() && i < classIds.size(); ++i) {
+        if (m_classCheckBoxes[i]->isChecked())
+            visibleClasses.insert(classIds[i]);
+    }
+    m_scaleChart->setData(m_scaleDistribution, m_classNames, visibleClasses);
+}
+
+void DatasetAnalysisDialog::onSelectAll() {
+    for (QCheckBox* cb : m_classCheckBoxes)
+        cb->setChecked(true);
+}
+
+void DatasetAnalysisDialog::onClearAll() {
+    for (QCheckBox* cb : m_classCheckBoxes)
+        cb->setChecked(false);
 }

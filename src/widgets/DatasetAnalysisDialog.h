@@ -1,11 +1,14 @@
 #pragma once
 #include <QDialog>
 #include <QMap>
+#include <QSet>
 #include <QVector>
 #include <QPointF>
 #include <QRectF>
 
 class QLabel;
+class QTabWidget;
+class QCheckBox;
 
 /**
  * @brief 柱状图绘制 Widget
@@ -69,6 +72,28 @@ private:
 };
 
 /**
+ * @brief 堆叠柱状图 Widget（尺度分布）
+ */
+class ScaleDistributionWidget : public QWidget {
+    Q_OBJECT
+public:
+    explicit ScaleDistributionWidget(QWidget* parent = nullptr);
+
+    // scaleData: classId → [smallCount, mediumCount, largeCount]
+    void setData(const QMap<int, QVector<int>>& scaleData,
+                 const QStringList& classNames,
+                 const QSet<int>& visibleClasses);
+
+protected:
+    void paintEvent(QPaintEvent* event) override;
+
+private:
+    QMap<int, QVector<int>> m_scaleData;
+    QStringList m_classNames;
+    QSet<int> m_visibleClasses;
+};
+
+/**
  * @brief 数据集分析对话框
  */
 class DatasetAnalysisDialog : public QDialog {
@@ -91,15 +116,22 @@ private:
     QVector<QRectF> m_boxes;
     QVector<int> m_boxClassIds;
     int m_imageCount = 0;
+    QMap<int, QVector<int>> m_scaleDistribution; // classId → [small, medium, large]
 
     // UI 组件
+    QTabWidget* m_tabWidget;
     BarChartWidget* m_barChart;
     HeatmapWidget* m_centerHeatmap;
     HeatmapWidget* m_sizeHeatmap;
     BoxOverlayWidget* m_boxOverlay;
+    ScaleDistributionWidget* m_scaleChart;
+    QVector<QCheckBox*> m_classCheckBoxes;
     QLabel* m_statusLabel;
 
     void setupUI();
     void loadAllAnnotations();
     void updateCharts();
+    void onClassFilterChanged();
+    void onSelectAll();
+    void onClearAll();
 };
