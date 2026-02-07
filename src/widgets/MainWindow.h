@@ -137,6 +137,9 @@ private slots:
     void onSplitDataset();
     void onDatasetAnalysis();
 
+    // 视频转图片
+    void onVideoToImage();
+
     // 后台标注状态检查
     void onFileStatusReady(int index, bool hasAnnotation);
     void onStatusCheckProgress(int current, int total);

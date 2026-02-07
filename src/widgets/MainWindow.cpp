@@ -3,6 +3,7 @@
 #include "SplitDatasetDialog.h"
 #include "SkeletonConfigDialog.h"
 #include "DatasetAnalysisDialog.h"
+#include "VideoToImageDialog.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -220,6 +221,9 @@ void MainWindow::setupMenus() {
     QMenu* toolsMenu = menuBar()->addMenu("工具(&T)");
     QAction* skeletonAction = toolsMenu->addAction("配置骨架(&S)...");
     connect(skeletonAction, &QAction::triggered, this, &MainWindow::onEditSkeletonConfig);
+
+    QAction* videoToImageAction = toolsMenu->addAction("视频转图片(&V)...");
+    connect(videoToImageAction, &QAction::triggered, this, &MainWindow::onVideoToImage);
 
     toolsMenu->addSeparator();
     QAction* splitAction = toolsMenu->addAction("分割数据集(&D)...");
@@ -1403,5 +1407,10 @@ void MainWindow::onDatasetAnalysis() {
     dialog.setLabelsPath(m_labelsFolder);
     dialog.setClassNames(m_classesLoader.classNames());
     dialog.analyze();
+    dialog.exec();
+}
+
+void MainWindow::onVideoToImage() {
+    VideoToImageDialog dialog(this);
     dialog.exec();
 }

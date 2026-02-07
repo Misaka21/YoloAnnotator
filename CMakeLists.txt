@@ -132,6 +132,7 @@ set(WIDGET_SOURCES
     src/widgets/SplitDatasetDialog.cpp
     src/widgets/SkeletonConfigDialog.cpp
     src/widgets/DatasetAnalysisDialog.cpp
+    src/widgets/VideoToImageDialog.cpp
 )
 
 set(INFERENCE_SOURCES
