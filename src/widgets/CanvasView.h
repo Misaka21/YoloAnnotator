@@ -30,6 +30,7 @@ public:
     // 设置图像
     void setImage(const QImage& image);
     void setImage(const QString& imagePath);
+    void clearImage();
     QImage currentImage() const { return m_image; }
     QString currentImagePath() const { return m_imagePath; }
 

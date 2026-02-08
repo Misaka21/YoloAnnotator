@@ -9,6 +9,7 @@
 #include <QHeaderView>
 #include <QProgressDialog>
 #include <QApplication>
+#include <QRegularExpression>
 
 BatchRenameDialog::BatchRenameDialog(QWidget* parent)
     : QDialog(parent) {
@@ -143,6 +144,10 @@ void BatchRenameDialog::onPatternChanged() {
     updatePreview();
 }
 
+void BatchRenameDialog::onPreview() {
+    updatePreview();
+}
+
 void BatchRenameDialog::updatePreview() {
     if (m_imageFiles.isEmpty()) {
         m_renameBtn->setEnabled(false);
@@ -151,7 +156,7 @@ void BatchRenameDialog::updatePreview() {
 
     // 检查前缀是否有效
     QString prefix = m_prefixEdit->text();
-    if (prefix.isEmpty() || prefix.contains(QRegExp("[\\\\/:*?\"<>|]"))) {
+    if (prefix.isEmpty() || prefix.contains(QRegularExpression("[\\\\/:*?\"<>|]"))) {
         m_statusLabel->setText("错误：前缀不能为空或包含非法字符");
         m_renameBtn->setEnabled(false);
         return;

@@ -103,6 +103,37 @@ void CanvasView::setImage(const QString& imagePath) {
     }
 }
 
+void CanvasView::clearImage() {
+    resetOperationState();
+
+    m_image = QImage();
+    m_imagePath.clear();
+    m_transform.setImageSize(QSize());
+
+    m_annotations.clear();
+    m_selectedIndex = -1;
+    m_history.clear();
+    m_historyIndex = -1;
+
+    m_scene->clear();
+    m_pixmapItem = nullptr;
+    m_annotationItems.clear();
+    m_scene->setSceneRect(QRectF());
+
+    // Re-create crosshair items after scene clear.
+    QPen crossPen(m_crossHairColor, 1, Qt::DashLine);
+    m_crossHairH = m_scene->addLine(0, 0, 0, 0, crossPen);
+    m_crossHairV = m_scene->addLine(0, 0, 0, 0, crossPen);
+    m_crossHairH->setZValue(1000);
+    m_crossHairV->setZValue(1000);
+    m_crossHairH->setVisible(false);
+    m_crossHairV->setVisible(false);
+
+    resetTransform();
+    emit zoomChanged(1.0);
+    emit annotationsChanged();
+}
+
 void CanvasView::setAnnotations(const QVector<Annotation>& annotations) {
     m_annotations = annotations;
     m_selectedIndex = -1;
