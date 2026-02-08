@@ -133,6 +133,7 @@ set(WIDGET_SOURCES
     src/widgets/SkeletonConfigDialog.cpp
     src/widgets/DatasetAnalysisDialog.cpp
     src/widgets/VideoToImageDialog.cpp
+    src/widgets/BatchRenameDialog.cpp
 )
 
 set(INFERENCE_SOURCES

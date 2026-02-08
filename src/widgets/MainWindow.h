@@ -137,6 +137,7 @@ private slots:
     // 数据集工具
     void onSplitDataset();
     void onDatasetAnalysis();
+    void onBatchRename();
 
     // 视频转图片
     void onVideoToImage();

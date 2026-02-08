@@ -4,6 +4,7 @@
 #include "SkeletonConfigDialog.h"
 #include "DatasetAnalysisDialog.h"
 #include "VideoToImageDialog.h"
+#include "BatchRenameDialog.h"
 #include <QMenuBar>
 #include <QFileDialog>
 #include <QMessageBox>
@@ -227,6 +228,10 @@ void MainWindow::setupMenus() {
 
     QAction* videoToImageAction = toolsMenu->addAction("视频转图片(&V)...");
     connect(videoToImageAction, &QAction::triggered, this, &MainWindow::onVideoToImage);
+
+    toolsMenu->addSeparator();
+    QAction* batchRenameAction = toolsMenu->addAction("批量重命名(&R)...");
+    connect(batchRenameAction, &QAction::triggered, this, &MainWindow::onBatchRename);
 
     toolsMenu->addSeparator();
     QAction* splitAction = toolsMenu->addAction("分割数据集(&D)...");
@@ -1416,6 +1421,31 @@ void MainWindow::onDatasetAnalysis() {
 void MainWindow::onVideoToImage() {
     VideoToImageDialog dialog(this);
     dialog.exec();
+}
+
+void MainWindow::onBatchRename() {
+    // 检查是否已打开项目
+    if (m_currentFolder.isEmpty() || m_imageFiles.isEmpty()) {
+        QMessageBox::warning(this, "提示", "请先打开一个数据集项目或文件夹");
+        return;
+    }
+
+    BatchRenameDialog dialog(this);
+    dialog.setProjectPath(m_currentFolder, m_labelsFolder);
+    dialog.setImageFiles(m_imageFiles);
+
+    if (dialog.exec() == QDialog::Accepted) {
+        // 重命名完成后，重新加载项目
+        QMessageBox::information(this, "提示",
+            "文件已重命名完成。\n请重新打开项目以刷新文件列表。");
+
+        // 清空当前状态
+        m_imageFiles.clear();
+        m_currentIndex = -1;
+        m_canvasView->clearImage();
+        updateFileList();
+        updateStatusBar();
+    }
 }
 
 void MainWindow::onDeleteImageFile() {
