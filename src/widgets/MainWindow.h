@@ -96,6 +96,7 @@ private slots:
     void onOpenImage();
     void onImportClasses();
     void onSaveAnnotation();
+    void onDeleteImageFile();
 
     // 导航
     void onFileSelected(QListWidgetItem* item);

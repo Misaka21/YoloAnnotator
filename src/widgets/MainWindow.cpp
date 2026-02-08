@@ -193,6 +193,9 @@ void MainWindow::setupMenus() {
     QAction* deleteAction = editMenu->addAction("删除标注(&D)");
     deleteAction->setShortcut(QKeySequence::Delete);
     connect(deleteAction, &QAction::triggered, this, &MainWindow::onDeleteAnnotation);
+    QAction* deleteFileAction = editMenu->addAction("删除图片文件(&F)");
+    deleteFileAction->setShortcut(QKeySequence("Shift+Delete"));
+    connect(deleteFileAction, &QAction::triggered, this, &MainWindow::onDeleteImageFile);
     QMenu* viewMenu = menuBar()->addMenu("视图(&V)");
     QAction* zoomInAction = viewMenu->addAction("放大(&I)");
     zoomInAction->setShortcut(QKeySequence("Ctrl++"));
@@ -1413,4 +1416,84 @@ void MainWindow::onDatasetAnalysis() {
 void MainWindow::onVideoToImage() {
     VideoToImageDialog dialog(this);
     dialog.exec();
+}
+
+void MainWindow::onDeleteImageFile() {
+    // 检查是否有当前图片
+    if (m_currentIndex < 0 || m_currentIndex >= m_imageFiles.size()) {
+        QMessageBox::warning(this, "提示", "没有可删除的图片");
+        return;
+    }
+
+    QString currentFileName = m_imageFiles[m_currentIndex];
+    QString imagePath = m_currentFolder + "/" + currentFileName;
+
+    // 确认对话框
+    QString annotationPath = getAnnotationPath(imagePath);
+    bool hasAnnotation = QFile::exists(annotationPath);
+
+    QString message = QString("确定要删除以下文件吗？\n\n图片: %1").arg(currentFileName);
+    if (hasAnnotation) {
+        message += QString("\n标注: %1").arg(QFileInfo(annotationPath).fileName());
+    }
+    message += "\n\n此操作不可恢复！";
+
+    auto reply = QMessageBox::question(
+        this,
+        "确认删除",
+        message,
+        QMessageBox::Yes | QMessageBox::No,
+        QMessageBox::No
+    );
+
+    if (reply != QMessageBox::Yes) {
+        return;
+    }
+
+    // 删除图片文件
+    QFile imageFile(imagePath);
+    bool imageDeleted = imageFile.remove();
+
+    // 删除标注文件（如果存在）
+    bool annotationDeleted = false;
+    if (hasAnnotation) {
+        QFile annotationFile(annotationPath);
+        annotationDeleted = annotationFile.remove();
+    }
+
+    // 显示删除结果
+    if (!imageDeleted) {
+        QMessageBox::critical(this, "错误", "删除图片文件失败");
+        return;
+    }
+
+    // 保存当前索引，准备加载下一张
+    int indexToLoad = m_currentIndex;
+
+    // 从文件列表中移除
+    m_imageFiles.removeAt(m_currentIndex);
+    m_currentIndex = -1;  // 重置当前索引
+
+    // 更新文件列表显示
+    updateFileList();
+
+    // 加载下一张图片
+    if (!m_imageFiles.isEmpty()) {
+        // 如果删除的是最后一张，加载前一张
+        if (indexToLoad >= m_imageFiles.size()) {
+            indexToLoad = m_imageFiles.size() - 1;
+        }
+        loadImage(indexToLoad);
+    } else {
+        // 没有图片了，清空画布
+        m_canvasView->clearImage();
+        updateStatusBar();
+    }
+
+    // 显示成功提示
+    QString successMsg = "已删除图片";
+    if (annotationDeleted) {
+        successMsg += "和标注文件";
+    }
+    statusBar()->showMessage(successMsg, 2000);
 }
