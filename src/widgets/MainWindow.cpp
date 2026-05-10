@@ -399,7 +399,13 @@ void MainWindow::onOpenFolder() {
     QString labelsDir;
     if (dir.contains("/images") || dir.contains("\\images")) {
         QString possibleLabels = dir;
-        possibleLabels.replace("/images", "/labels"); possibleLabels.replace("\\images", "\\labels");
+        int idx = possibleLabels.lastIndexOf("/images/");
+        if (idx >= 0) {
+            possibleLabels.replace(idx, 7, "/labels/");
+        } else {
+            idx = possibleLabels.lastIndexOf("\\images\\");
+            if (idx >= 0) possibleLabels.replace(idx, 8, "\\labels\\");
+        }
         if (QDir(possibleLabels).exists()) labelsDir = possibleLabels;
     }
     if (labelsDir.isEmpty()) { QDir parent(dir); parent.cdUp(); QString siblingLabels = parent.absolutePath() + "/labels"; if (QDir(siblingLabels).exists()) labelsDir = siblingLabels; }

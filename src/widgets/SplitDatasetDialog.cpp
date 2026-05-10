@@ -196,11 +196,16 @@ void SplitDatasetDialog::onBrowseSource() {
     if (!dir.isEmpty()) {
         m_sourceImagesEdit->setText(dir);
 
-        // 尝试自动检测 labels 文件夹
+        // 尝试自动检测 labels 文件夹（替换路径中最后一次出现的 images）
         QString labelsDir = dir;
-        labelsDir.replace("/images", "/labels");
-        labelsDir.replace("\\images", "\\labels");
-        if (QDir(labelsDir).exists() && labelsDir != dir) {
+        int idx = labelsDir.lastIndexOf("/images/");
+        if (idx >= 0) {
+            labelsDir.replace(idx, 7, "/labels/");
+        } else {
+            idx = labelsDir.lastIndexOf("\\images\\");
+            if (idx >= 0) labelsDir.replace(idx, 8, "\\labels\\");
+        }
+        if (labelsDir != dir && QDir(labelsDir).exists()) {
             m_sourceLabelsEdit->setText(labelsDir);
         } else {
             m_sourceLabelsEdit->setText(dir);
@@ -354,7 +359,9 @@ void SplitDatasetDialog::performSplit() {
 
     int trainCount = total * trainRatio / 100;
     int valCount = total * valRatio / 100;
-    int testCount = total - trainCount - valCount;
+    int testCount = (testRatio > 0) ? (total * testRatio / 100) : 0;
+    // 修正舍入误差：train 取剩余，确保 train+val+test == total
+    trainCount = total - valCount - testCount;
 
     // 是否分开 images/labels 子文件夹
     bool separateFolders = m_separateFoldersCheck->isChecked();
@@ -367,7 +374,7 @@ void SplitDatasetDialog::performSplit() {
         trainLblDir = outputDir + "/" + m_trainFolderEdit->text() + "/labels";
         valImgDir = outputDir + "/" + m_valFolderEdit->text() + "/images";
         valLblDir = outputDir + "/" + m_valFolderEdit->text() + "/labels";
-        if (testRatio > 0) {
+        if (testCount > 0) {
             testImgDir = outputDir + "/" + m_testFolderEdit->text() + "/images";
             testLblDir = outputDir + "/" + m_testFolderEdit->text() + "/labels";
         }
@@ -377,7 +384,7 @@ void SplitDatasetDialog::performSplit() {
         trainLblDir = trainImgDir;  // 同一目录
         valImgDir = outputDir + "/" + m_valFolderEdit->text();
         valLblDir = valImgDir;
-        if (testRatio > 0) {
+        if (testCount > 0) {
             testImgDir = outputDir + "/" + m_testFolderEdit->text();
             testLblDir = testImgDir;
         }
@@ -387,7 +394,7 @@ void SplitDatasetDialog::performSplit() {
     if (separateFolders) QDir().mkpath(trainLblDir);
     QDir().mkpath(valImgDir);
     if (separateFolders) QDir().mkpath(valLblDir);
-    if (testRatio > 0) {
+    if (testCount > 0) {
         QDir().mkpath(testImgDir);
         if (separateFolders) QDir().mkpath(testLblDir);
     }
@@ -396,18 +403,26 @@ void SplitDatasetDialog::performSplit() {
 
     // 复制文件
     int idx = 0;
+    int imgCopyErrors = 0;
+    int lblCopyErrors = 0;
     auto copyFile = [&](const QString& imgName, const QString& destImgDir, const QString& destLblDir) {
-        // 复制图片
+        // 复制图片（先删除目标文件以支持覆盖）
         QString srcImg = imagesDir + "/" + imgName;
         QString dstImg = destImgDir + "/" + imgName;
-        QFile::copy(srcImg, dstImg);
+        if (QFile::exists(dstImg)) QFile::remove(dstImg);
+        if (!QFile::copy(srcImg, dstImg)) {
+            imgCopyErrors++;
+        }
 
         // 复制标签
         QString baseName = QFileInfo(imgName).completeBaseName();
         QString srcLbl = labelsDir + "/" + baseName + ".txt";
         QString dstLbl = destLblDir + "/" + baseName + ".txt";
         if (QFile::exists(srcLbl)) {
-            QFile::copy(srcLbl, dstLbl);
+            if (QFile::exists(dstLbl)) QFile::remove(dstLbl);
+            if (!QFile::copy(srcLbl, dstLbl)) {
+                lblCopyErrors++;
+            }
         }
 
         idx++;
@@ -497,13 +512,13 @@ void SplitDatasetDialog::performSplit() {
         if (separateFolders) {
             out << "train: " << m_trainFolderEdit->text() << "/images\n";
             out << "val: " << m_valFolderEdit->text() << "/images\n";
-            if (testRatio > 0) {
+            if (testCount > 0) {
                 out << "test: " << m_testFolderEdit->text() << "/images\n";
             }
         } else {
             out << "train: " << m_trainFolderEdit->text() << "\n";
             out << "val: " << m_valFolderEdit->text() << "\n";
-            if (testRatio > 0) {
+            if (testCount > 0) {
                 out << "test: " << m_testFolderEdit->text() << "\n";
             }
         }
@@ -543,13 +558,21 @@ void SplitDatasetDialog::performSplit() {
     m_statusLabel->setText(QString("完成! 训练:%1 验证:%2 测试:%3")
         .arg(trainCount).arg(valCount).arg(testCount));
 
-    QMessageBox::information(this, "分割完成",
-        QString("数据集分割完成!\n\n"
-                "训练集: %1 张\n"
-                "验证集: %2 张\n"
-                "测试集: %3 张\n\n"
-                "YAML: %4")
-        .arg(trainCount).arg(valCount).arg(testCount).arg(yamlPath));
+    QString completionMsg = QString("数据集分割完成!\n\n"
+            "训练集: %1 张\n"
+            "验证集: %2 张\n"
+            "测试集: %3 张\n\n"
+            "YAML: %4")
+        .arg(trainCount).arg(valCount).arg(testCount).arg(yamlPath);
+
+    if (imgCopyErrors > 0 || lblCopyErrors > 0) {
+        completionMsg += QString("\n\n⚠ 复制错误:\n"
+            "图片: %1 个失败\n"
+            "标签: %2 个失败")
+            .arg(imgCopyErrors).arg(lblCopyErrors);
+    }
+
+    QMessageBox::information(this, "分割完成", completionMsg);
 
     accept();
 }
