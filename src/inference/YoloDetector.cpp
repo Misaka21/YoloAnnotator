@@ -95,6 +95,8 @@ void YoloDetector::unloadModel()
     m_modelType = ModelType::Unknown;
     m_numClasses = 80;
     m_numKeypoints = 0;
+    m_outputAnchorsFirst = false;
+    m_hasObjectness = false;
     emit modelUnloaded();
 }
 
@@ -187,30 +189,72 @@ bool YoloDetector::analyzeModel()
                 continue;
             }
 
-            int numOutputs = output.size[1];
-            int numAnchors = output.size[2];
+            int dim1 = output.size[1];
+            int dim2 = output.size[2];
+            int numOutputs = -1;
+            int numAnchors = -1;
 
-            // 验证 anchor 数量是否合理（应该与输入尺寸匹配）
-            // size=640 -> 8400, size=1280 -> 33600
-            double expectedAnchors = (size/8.0)*(size/8.0) + (size/16.0)*(size/16.0) + (size/32.0)*(size/32.0);
-            if (std::abs(numAnchors - expectedAnchors) > 100) {
+            // YOLOv8/v11: anchor-free grid count (640 -> 8400)
+            // YOLOv5:     anchor-based count = 3 * grid count (640 -> 25200)
+            double expectedAnchorsV5V8 = (size / 8.0) * (size / 8.0)
+                                       + (size / 16.0) * (size / 16.0)
+                                       + (size / 32.0) * (size / 32.0);
+            auto isAnchorLikeV5V8 = [expectedAnchorsV5V8](int v) {
+                return std::abs(v - expectedAnchorsV5V8) <= 100 ||
+                       std::abs(v - expectedAnchorsV5V8 * 3.0) <= 300;
+            };
+
+            bool anchorsFirst = false;
+            if (isAnchorLikeV5V8(dim2)) {
+                // [1, features, anchors]
+                numOutputs = dim1;
+                numAnchors = dim2;
+                anchorsFirst = false;
+            } else if (isAnchorLikeV5V8(dim1)) {
+                // [1, anchors, features]
+                numOutputs = dim2;
+                numAnchors = dim1;
+                anchorsFirst = true;
+            } else {
                 reloadNetForRetry();
-                continue;  // anchor 数量不匹配，尝试下一个尺寸
+                continue;
             }
 
-            m_inputSize = QSize(size, size);
-            qDebug() << "Model input size detected:" << size << "x" << size << "anchors:" << numAnchors;
+            bool hasObjectness = std::abs(numAnchors - expectedAnchorsV5V8 * 3.0) <= 300;
 
-            // Determine model type
-            if ((numOutputs - 5) > 0 && (numOutputs - 5) % 3 == 0) {
+            m_inputSize = QSize(size, size);
+            m_outputAnchorsFirst = anchorsFirst;
+            m_hasObjectness = hasObjectness;
+            qDebug() << "Model input size detected:" << size << "x" << size
+                     << "anchors:" << numAnchors
+                     << "layout:" << (anchorsFirst ? "[1,A,F]" : "[1,F,A]")
+                     << "objness:" << hasObjectness;
+
+            if (hasObjectness) {
+                // YOLOv5 style detection output: [x, y, w, h, obj, cls...]
+                m_modelType = ModelType::Detection;
+                m_numClasses = numOutputs - 5;
+                m_numKeypoints = 0;
+                if (m_numClasses <= 0) {
+                    reloadNetForRetry();
+                    continue;
+                }
+                qDebug() << "Detected YOLOv5-style Detection model with" << m_numClasses << "classes";
+            } else if ((numOutputs - 5) > 0 && (numOutputs - 5) % 3 == 0) {
+                // Keep existing pose heuristic for v8/v11 pose models.
                 m_modelType = ModelType::Pose;
                 m_numKeypoints = (numOutputs - 5) / 3;
                 m_numClasses = 1;
                 qDebug() << "Detected Pose model with" << m_numKeypoints << "keypoints";
             } else {
+                // YOLOv8/v11 detection output: [x, y, w, h, cls...]
                 m_modelType = ModelType::Detection;
                 m_numClasses = numOutputs - 4;
                 m_numKeypoints = 0;
+                if (m_numClasses <= 0) {
+                    reloadNetForRetry();
+                    continue;
+                }
                 qDebug() << "Detected Detection model with" << m_numClasses << "classes";
             }
 
@@ -340,32 +384,61 @@ QVector<Annotation> YoloDetector::postprocessDetection(const cv::Mat& output,
 
     // Output shape: [1, numOutputs, numAnchors]
     // numOutputs = 4 + numClasses
-    int numOutputs = output.size[1];
-    int numAnchors = output.size[2];
+    if (output.dims != 3) return results;
+
+    int numAnchors = m_outputAnchorsFirst ? output.size[1] : output.size[2];
+    int numOutputs = m_outputAnchorsFirst ? output.size[2] : output.size[1];
+    int classOffset = m_hasObjectness ? 5 : 4;
+    if (numOutputs <= classOffset || m_numClasses <= 0) return results;
 
     // 使用OpenCV高效转置: [1, numOutputs, numAnchors] -> [numAnchors, numOutputs]
     cv::Mat data = output.reshape(1, numOutputs).t();  // 比手动循环快10倍+
+
+    if (m_outputAnchorsFirst) {
+        // Convert [1, A, F] to [A, F]
+        data = output.reshape(1, numAnchors);
+    }
 
     const float* dataPtr = data.ptr<float>();
     const float invImgW = 1.0f / imgW;
     const float invImgH = 1.0f / imgH;
     const float invScale = 1.0f / info.scale;
+    int classCount = std::min(m_numClasses, numOutputs - classOffset);
+    if (classCount <= 0) return results;
 
     for (int i = 0; i < numAnchors; i++) {
         const float* row = dataPtr + i * numOutputs;
 
         // 直接扫描类别得分，避免Mat wrapper开销
-        const float* classScores = row + 4;
-        float maxScore = classScores[0];
+        float score = 0.0f;
         int classId = 0;
-        for (int c = 1; c < m_numClasses; c++) {
-            if (classScores[c] > maxScore) {
-                maxScore = classScores[c];
-                classId = c;
+
+        if (m_hasObjectness) {
+            float obj = row[4];
+            if (obj <= 0.0f) continue;
+
+            const float* classScores = row + 5;
+            float maxClassScore = classScores[0];
+            for (int c = 1; c < classCount; c++) {
+                if (classScores[c] > maxClassScore) {
+                    maxClassScore = classScores[c];
+                    classId = c;
+                }
             }
+            score = obj * maxClassScore;
+        } else {
+            const float* classScores = row + 4;
+            float maxClassScore = classScores[0];
+            for (int c = 1; c < classCount; c++) {
+                if (classScores[c] > maxClassScore) {
+                    maxClassScore = classScores[c];
+                    classId = c;
+                }
+            }
+            score = maxClassScore;
         }
 
-        if (maxScore < m_confThreshold) continue;
+        if (score < m_confThreshold) continue;
 
         float cx = row[0], cy = row[1], w = row[2], h = row[3];
 
@@ -387,7 +460,7 @@ QVector<Annotation> YoloDetector::postprocessDetection(const cv::Mat& output,
         // Convert to normalized coordinates
         Annotation ann;
         ann.setClassId(classId);
-        ann.setConfidence(static_cast<float>(maxScore));
+        ann.setConfidence(score);
 
         BoundingBox bbox;
         bbox.setCenterX((x1 + x2) * 0.5f * invImgW);
@@ -410,11 +483,16 @@ QVector<Annotation> YoloDetector::postprocessPose(const cv::Mat& output,
 
     // Output shape: [1, numOutputs, numAnchors]
     // numOutputs = 4 + 1 + numKeypoints * 3
-    int numOutputs = output.size[1];
-    int numAnchors = output.size[2];
+    if (output.dims != 3) return results;
+    int numAnchors = m_outputAnchorsFirst ? output.size[1] : output.size[2];
+    int numOutputs = m_outputAnchorsFirst ? output.size[2] : output.size[1];
+    if (numOutputs < 5) return results;
 
     // 使用OpenCV高效转置
     cv::Mat data = output.reshape(1, numOutputs).t();
+    if (m_outputAnchorsFirst) {
+        data = output.reshape(1, numAnchors);
+    }
 
     const float* dataPtr = data.ptr<float>();
     const float invImgW = 1.0f / imgW;
