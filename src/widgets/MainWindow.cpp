@@ -125,17 +125,20 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::setupUI() {
-    QWidget* central = new QWidget(this); setCentralWidget(central);
-    QHBoxLayout* mainLayout = new QHBoxLayout(central);
-    mainLayout->setContentsMargins(5,5,5,5); mainLayout->setSpacing(5);
+    QSplitter* splitter = new QSplitter(Qt::Horizontal, this);
+    splitter->setContentsMargins(5, 5, 5, 5);
+    setCentralWidget(splitter);
+
     QGroupBox* fileGroup = new QGroupBox("文件列表", this);
     QVBoxLayout* fileLayout = new QVBoxLayout(fileGroup);
     m_fileList = new QListWidget(this); fileLayout->addWidget(m_fileList);
-    fileGroup->setFixedWidth(200);
+
     m_canvasView = new CanvasView(this);
+
     QWidget* rightPanel = new QWidget(this);
     QVBoxLayout* rightLayout = new QVBoxLayout(rightPanel);
-    rightLayout->setContentsMargins(0,0,0,0); rightPanel->setFixedWidth(220);
+    rightLayout->setContentsMargins(0,0,0,0);
+
     QGroupBox* classGroup = new QGroupBox("类别", this);
     QVBoxLayout* classLayout = new QVBoxLayout(classGroup);
     m_classList = new QListWidget(this); classLayout->addWidget(m_classList);
@@ -151,8 +154,14 @@ void MainWindow::setupUI() {
     formatLayout->addWidget(m_formatCombo); formatGroup->setMaximumHeight(80);
     rightLayout->addWidget(classGroup); rightLayout->addWidget(annGroup);
     rightLayout->addWidget(formatGroup);
-    mainLayout->addWidget(fileGroup); mainLayout->addWidget(m_canvasView, 1);
-    mainLayout->addWidget(rightPanel);
+
+    splitter->addWidget(fileGroup);
+    splitter->addWidget(m_canvasView);
+    splitter->addWidget(rightPanel);
+    splitter->setSizes({200, 600, 220});
+    splitter->setCollapsible(0, false);  // 文件列表不可完全折叠
+    splitter->setCollapsible(1, false);  // 画布不可折叠
+    splitter->setCollapsible(2, false);  // 右侧面板不可折叠
     m_statusLabel = new QLabel("就绪", this); m_zoomLabel = new QLabel("100%", this);
     statusBar()->addWidget(m_statusLabel, 1); statusBar()->addPermanentWidget(m_zoomLabel);
 }
