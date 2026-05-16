@@ -80,14 +80,14 @@ void SplitDatasetDialog::setupUI() {
 
     ratioInputLayout->addWidget(new QLabel("训练集:"));
     m_trainRatioSpin = new QSpinBox();
-    m_trainRatioSpin->setRange(1, 100);
+    m_trainRatioSpin->setRange(0, 100);
     m_trainRatioSpin->setValue(70);
     m_trainRatioSpin->setSuffix("%");
     ratioInputLayout->addWidget(m_trainRatioSpin);
 
     ratioInputLayout->addWidget(new QLabel("验证集:"));
     m_valRatioSpin = new QSpinBox();
-    m_valRatioSpin->setRange(1, 100);
+    m_valRatioSpin->setRange(0, 100);
     m_valRatioSpin->setValue(20);
     m_valRatioSpin->setSuffix("%");
     ratioInputLayout->addWidget(m_valRatioSpin);
@@ -277,6 +277,11 @@ bool SplitDatasetDialog::validateInputs() {
 
     if (total != 100) {
         QMessageBox::warning(this, "错误", "分割比例总和必须等于 100%");
+        return false;
+    }
+
+    if (m_trainRatioSpin->value() == 0 && m_valRatioSpin->value() == 0) {
+        QMessageBox::warning(this, "错误", "训练集和验证集不能同时为 0%");
         return false;
     }
 

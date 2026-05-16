@@ -286,54 +286,80 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                                           drawPen, QBrush(QColor(0, 255, 0, 50)));
             m_tempRect->setZValue(100);
         } else if (m_mode == EditMode::Select) {
-            // 优先检查当前选中标注的角点/关键点
-            if (m_selectedIndex >= 0 && m_selectedIndex < m_annotations.size()) {
-                int ptIdx = findPointAt(m_selectedIndex, scenePos);
-                if (ptIdx >= 0) {
-                    // 检查是否点击在关键点上 (ptIdx >= 4 表示关键点)
-                    if (ptIdx >= 4) {
-                        int kpIdx = ptIdx - 4;
-                        Annotation& ann = m_annotations[m_selectedIndex];
+            // 优先处理当前选中标注：吸附最近的控制点
+            if (m_selectedIndex >= 0 && m_selectedIndex < m_annotations.size()
+                && !m_image.isNull()) {
+                const Annotation& selAnn = m_annotations[m_selectedIndex];
+                const BoundingBox& selBbox = selAnn.boundingBox();
+                double imgW = m_image.width();
+                double imgH = m_image.height();
+                double nx = scenePos.x() / imgW;
+                double ny = scenePos.y() / imgH;
 
-                        // Shift+点击：删除关键点
-                        if (event->modifiers() & Qt::ShiftModifier) {
-                            saveToHistory();
-                            ann.keypoints()[kpIdx].setValid(false);
-                            updateAnnotationItems();
-                            emit annotationsChanged();
-                            return;
-                        }
+                if (nx >= selBbox.left() && nx <= selBbox.right() &&
+                    ny >= selBbox.top() && ny <= selBbox.bottom()) {
 
-                        // Ctrl+点击：循环可见性 (0->1->2->0)
-                        if (event->modifiers() & Qt::ControlModifier) {
-                            saveToHistory();
-                            ann.keypoints()[kpIdx].cycleVisibility();
-                            updateAnnotationItems();
-                            emit annotationsChanged();
-                            return;
-                        }
+                    int nearestPt = findPointAt(m_selectedIndex, scenePos);
+
+                    // Shift+点击关键点：删除
+                    if (nearestPt >= 4 && (event->modifiers() & Qt::ShiftModifier)) {
+                        int kpIdx = nearestPt - 4;
+                        saveToHistory();
+                        m_annotations[m_selectedIndex].keypoints()[kpIdx].setValid(false);
+                        updateAnnotationItems();
+                        emit annotationsChanged();
+                        return;
                     }
 
-                    // 点击在当前选中框的控制点上，开始拖动
-                    m_dragging = true;
-                    m_dragAnnIndex = m_selectedIndex;
-                    m_dragPointIndex = ptIdx;
-                    m_dragStartPos = scenePos;
-                    saveToHistory();
+                    // Alt+点击关键点：循环可见性
+                    if (nearestPt >= 4 && (event->modifiers() & Qt::AltModifier)) {
+                        int kpIdx = nearestPt - 4;
+                        saveToHistory();
+                        m_annotations[m_selectedIndex].keypoints()[kpIdx].cycleVisibility();
+                        updateAnnotationItems();
+                        emit annotationsChanged();
+                        return;
+                    }
+
+                    // Ctrl+点击：强制整体移动框体
+                    if (event->modifiers() & Qt::ControlModifier) {
+                        nearestPt = -1;
+                    }
+
+                    // 拖动最近点（无修饰键），或整体移动（Ctrl）
+                    if (nearestPt >= 0 || (event->modifiers() & Qt::ControlModifier)) {
+                        m_dragging = true;
+                        m_dragAnnIndex = m_selectedIndex;
+                        m_dragPointIndex = nearestPt;
+                        m_dragStartPos = scenePos;
+                        saveToHistory();
+                        return;
+                    }
+
+                    // 点击在框内但远离任何控制点且无Ctrl：不触发，防止误触
                     return;
                 }
             }
 
-            // 否则尝试选择其他标注
+            // 检查其他标注
             int annIdx = findAnnotationAt(scenePos);
             if (annIdx >= 0) {
                 setSelectedAnnotation(annIdx);
-                int ptIdx = findPointAt(annIdx, scenePos);
-                m_dragging = true;
-                m_dragAnnIndex = annIdx;
-                m_dragPointIndex = ptIdx;  // -1 表示整体拖动
-                m_dragStartPos = scenePos;
-                saveToHistory();
+                int nearestPt = findPointAt(annIdx, scenePos);
+
+                // Ctrl+点击：强制整体移动
+                if (event->modifiers() & Qt::ControlModifier) {
+                    nearestPt = -1;
+                }
+
+                // 只有吸附到控制点或按下Ctrl才启动拖动，防止误触
+                if (nearestPt >= 0 || (event->modifiers() & Qt::ControlModifier)) {
+                    m_dragging = true;
+                    m_dragAnnIndex = annIdx;
+                    m_dragPointIndex = nearestPt;
+                    m_dragStartPos = scenePos;
+                    saveToHistory();
+                }
             } else {
                 clearSelection();
             }
@@ -385,6 +411,30 @@ void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     // 更新十字辅助线
     if (m_mode == EditMode::DrawBBox) {
         updateCrossHair(scenePos);
+    }
+
+    // 悬停光标反馈：鼠标靠近控制点时显示十字光标
+    if (!m_drawing && !m_panning && !m_dragging
+        && m_mode == EditMode::Select
+        && m_selectedIndex >= 0 && !m_image.isNull()) {
+        int hoverPt = findPointAt(m_selectedIndex, scenePos);
+        if (hoverPt >= 0) {
+            setCursor(Qt::CrossCursor);
+        } else {
+            // 在选中框内但不在控制点附近：提示可用Ctrl移动
+            const Annotation& ann = m_annotations[m_selectedIndex];
+            const BoundingBox& bbox = ann.boundingBox();
+            double imgW = m_image.width();
+            double imgH = m_image.height();
+            double nx = scenePos.x() / imgW;
+            double ny = scenePos.y() / imgH;
+            if (nx >= bbox.left() && nx <= bbox.right() &&
+                ny >= bbox.top() && ny <= bbox.bottom()) {
+                setCursor(Qt::OpenHandCursor);
+            } else {
+                resetCursorForMode();
+            }
+        }
     }
 
     if (m_drawing && m_tempRect) {
@@ -623,7 +673,7 @@ void CanvasView::updateAnnotationItems() {
         // 如果选中，绘制角点 (固定屏幕大小，不随缩放变化)
         if (i == m_selectedIndex) {
             double scale = transform().m11();
-            double cornerRadius = 5.0 / scale;  // 屏幕上固定5像素半径
+            double cornerRadius = 8.0 / scale;  // 屏幕上固定8像素半径
 
             QPointF corners[4] = {
                 {x, y}, {x + w, y}, {x + w, y + h}, {x, y + h}
@@ -820,12 +870,13 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
     double imgW = m_image.width();
     double imgH = m_image.height();
 
-    // 在场景像素坐标中计算 (固定屏幕大小)
+    // 慷慨的吸附半径：30屏幕像素
     double scale = transform().m11();
-    double cornerThreshold = 5.0 / scale;    // 角点点击区域：与视觉一致
-    double keypointThreshold = 15.0 / scale; // 关键点点击区域：15像素（隐形扩大）
+    double snapRadius = 30.0 / scale;
+    double bestDist = snapRadius;
+    int bestIdx = -1;
 
-    // 检查边界框角点（转换为场景像素坐标）
+    // 检查所有边界框角点
     const BoundingBox& bbox = ann.boundingBox();
     QPointF corners[4] = {
         {bbox.left() * imgW, bbox.top() * imgH},
@@ -835,28 +886,29 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
     };
 
     for (int i = 0; i < 4; ++i) {
-        double dist = std::sqrt(std::pow(scenePos.x() - corners[i].x(), 2) +
-                                std::pow(scenePos.y() - corners[i].y(), 2));
-        if (dist < cornerThreshold) {
-            return i;
+        double dist = std::hypot(scenePos.x() - corners[i].x(),
+                                 scenePos.y() - corners[i].y());
+        if (dist < bestDist) {
+            bestDist = dist;
+            bestIdx = i;
         }
     }
 
-    // 检查关键点
+    // 检查所有有效关键点
     for (int i = 0; i < ann.keypointCount(); ++i) {
         const Keypoint& kp = ann.keypoints()[i];
         if (kp.isValid()) {
             double kpx = kp.x() * imgW;
             double kpy = kp.y() * imgH;
-            double dist = std::sqrt(std::pow(scenePos.x() - kpx, 2) +
-                                    std::pow(scenePos.y() - kpy, 2));
-            if (dist < keypointThreshold) {
-                return i + 4;
+            double dist = std::hypot(scenePos.x() - kpx, scenePos.y() - kpy);
+            if (dist < bestDist) {
+                bestDist = dist;
+                bestIdx = i + 4;
             }
         }
     }
 
-    return -1;  // 整体
+    return bestIdx;
 }
 
 void CanvasView::applyZoom(double factor, const QPointF& center) {
