@@ -869,14 +869,9 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
     const Annotation& ann = m_annotations[annIndex];
     double imgW = m_image.width();
     double imgH = m_image.height();
-
-    // 慷慨的吸附半径：30屏幕像素
     double scale = transform().m11();
-    double snapRadius = 30.0 / scale;
-    double bestDist = snapRadius;
-    int bestIdx = -1;
 
-    // 检查所有边界框角点
+    // 第一遍：角点优先（35屏幕像素），防止关键点"抢走"角点
     const BoundingBox& bbox = ann.boundingBox();
     QPointF corners[4] = {
         {bbox.left() * imgW, bbox.top() * imgH},
@@ -885,30 +880,37 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
         {bbox.left() * imgW, bbox.bottom() * imgH}
     };
 
+    double cornerRadius = 35.0 / scale;
+    double bestCornerDist = cornerRadius;
+    int bestCornerIdx = -1;
     for (int i = 0; i < 4; ++i) {
         double dist = std::hypot(scenePos.x() - corners[i].x(),
                                  scenePos.y() - corners[i].y());
-        if (dist < bestDist) {
-            bestDist = dist;
-            bestIdx = i;
+        if (dist < bestCornerDist) {
+            bestCornerDist = dist;
+            bestCornerIdx = i;
         }
     }
+    if (bestCornerIdx >= 0) return bestCornerIdx;
 
-    // 检查所有有效关键点
+    // 第二遍：关键点吸附（25屏幕像素）
+    double kpRadius = 25.0 / scale;
+    double bestKpDist = kpRadius;
+    int bestKpIdx = -1;
     for (int i = 0; i < ann.keypointCount(); ++i) {
         const Keypoint& kp = ann.keypoints()[i];
         if (kp.isValid()) {
             double kpx = kp.x() * imgW;
             double kpy = kp.y() * imgH;
             double dist = std::hypot(scenePos.x() - kpx, scenePos.y() - kpy);
-            if (dist < bestDist) {
-                bestDist = dist;
-                bestIdx = i + 4;
+            if (dist < bestKpDist) {
+                bestKpDist = dist;
+                bestKpIdx = i + 4;
             }
         }
     }
 
-    return bestIdx;
+    return bestKpIdx;
 }
 
 void CanvasView::applyZoom(double factor, const QPointF& center) {
