@@ -41,9 +41,14 @@ void ModelSettingsDialog::setupUI()
     // Model info
     QFormLayout* infoLayout = new QFormLayout();
     m_modelTypeLabel = new QLabel("-");
+    m_modelTypeCombo = new QComboBox();
+    m_modelTypeCombo->addItem("目标检测 (Detection)", static_cast<int>(ModelType::Detection));
+    m_modelTypeCombo->addItem("姿态估计 (Pose)", static_cast<int>(ModelType::Pose));
+    m_modelTypeCombo->setEnabled(false);  // disabled until model loaded
     m_inputSizeLabel = new QLabel("-");
     m_classesLabel = new QLabel("-");
     infoLayout->addRow("模型类型:", m_modelTypeLabel);
+    infoLayout->addRow("覆盖类型:", m_modelTypeCombo);
     infoLayout->addRow("输入尺寸:", m_inputSizeLabel);
     infoLayout->addRow("类别/关键点:", m_classesLabel);
     modelLayout->addLayout(infoLayout);
@@ -55,10 +60,10 @@ void ModelSettingsDialog::setupUI()
     QFormLayout* settingsLayout = new QFormLayout(settingsGroup);
 
     m_confSpinBox = new QDoubleSpinBox();
-    m_confSpinBox->setRange(0.01, 1.0);
-    m_confSpinBox->setSingleStep(0.05);
+    m_confSpinBox->setRange(0.001, 1.0);
+    m_confSpinBox->setSingleStep(0.01);
     m_confSpinBox->setValue(m_detector->confThreshold());
-    m_confSpinBox->setDecimals(2);
+    m_confSpinBox->setDecimals(3);
 
     m_iouSpinBox = new QDoubleSpinBox();
     m_iouSpinBox->setRange(0.01, 1.0);
@@ -126,6 +131,13 @@ void ModelSettingsDialog::setupUI()
     // Connections
     connect(m_browseBtn, &QPushButton::clicked, this, &ModelSettingsDialog::onBrowseModel);
     connect(m_loadBtn, &QPushButton::clicked, this, &ModelSettingsDialog::onLoadModel);
+    connect(m_modelTypeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            [this](int idx) {
+        ModelType type = static_cast<ModelType>(m_modelTypeCombo->itemData(idx).toInt());
+        m_detector->setModelType(type, m_datasetClasses.size());
+        updateModelInfo();
+        rebuildMappingUI();
+    });
     connect(applyBtn, &QPushButton::clicked, this, &ModelSettingsDialog::onApplySettings);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
 }
@@ -191,6 +203,11 @@ void ModelSettingsDialog::updateModelInfo()
 {
     if (m_detector->isLoaded()) {
         m_modelTypeLabel->setText(m_detector->modelTypeString());
+        m_modelTypeCombo->setEnabled(true);
+        m_modelTypeCombo->blockSignals(true);
+        int idx = m_modelTypeCombo->findData(static_cast<int>(m_detector->modelType()));
+        if (idx >= 0) m_modelTypeCombo->setCurrentIndex(idx);
+        m_modelTypeCombo->blockSignals(false);
         m_inputSizeLabel->setText(QString("%1 x %2")
             .arg(m_detector->inputSize().width())
             .arg(m_detector->inputSize().height()));
@@ -204,6 +221,7 @@ void ModelSettingsDialog::updateModelInfo()
         }
     } else {
         m_modelTypeLabel->setText("-");
+        m_modelTypeCombo->setEnabled(false);
         m_inputSizeLabel->setText("-");
         m_classesLabel->setText("-");
     }

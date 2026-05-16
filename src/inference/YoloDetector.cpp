@@ -93,6 +93,7 @@ void YoloDetector::unloadModel()
     m_net = cv::dnn::Net();
     m_modelPath.clear();
     m_modelType = ModelType::Unknown;
+    m_numOutputs = 0;
     m_numClasses = 80;
     m_numKeypoints = 0;
     m_outputAnchorsFirst = false;
@@ -114,6 +115,60 @@ QString YoloDetector::modelTypeString() const
         return QString("Pose (%1 keypoints)").arg(m_numKeypoints);
     default:
         return "Unknown";
+    }
+}
+
+void YoloDetector::setModelType(ModelType type, int classCountHint)
+{
+    if (m_modelType == type || type == ModelType::Unknown) return;
+
+    if (type == ModelType::Pose && m_numOutputs > 5) {
+        // Pose format variants:
+        //   1-class anchor-free:  [x,y,w,h, conf,        kp*3*N] = 5+3N
+        //   1-class with obj:     [x,y,w,h, obj,         kp*3*N] = 5+3N (same formula)
+        //   C-class anchor-free: [x,y,w,h, cls*C,       kp*3*N] = 4+C+3N
+        //   C-class with obj:    [x,y,w,h, obj, cls*C,   kp*3*N] = 5+C+3N
+        //   C-class w/ box+cls:  [x,y,w,h, conf, cls*C,  kp*3*N] = 5+C+3N (same)
+        int bestKeypoints = -1;
+        int bestClasses = 1;
+
+        // Try with the class count hint first (most reliable)
+        if (classCountHint > 0) {
+            for (int boxBase : {4, 5}) {
+                int kpChannels = m_numOutputs - boxBase - classCountHint;
+                if (kpChannels > 0 && kpChannels % 3 == 0) {
+                    bestKeypoints = kpChannels / 3;
+                    bestClasses = classCountHint;
+                    break;
+                }
+            }
+        }
+
+        // Fallback: try standard 1-class formats
+        if (bestKeypoints <= 0) {
+            for (int base : {5, 6, 4}) {
+                int kpChannels = m_numOutputs - base;
+                if (kpChannels > 0 && kpChannels % 3 == 0) {
+                    bestKeypoints = kpChannels / 3;
+                    bestClasses = 1;
+                    break;
+                }
+            }
+        }
+
+        if (bestKeypoints > 0) {
+            m_modelType = ModelType::Pose;
+            m_numKeypoints = bestKeypoints;
+            m_numClasses = bestClasses;
+        }
+    } else if (type == ModelType::Detection && m_numOutputs > 4) {
+        m_modelType = ModelType::Detection;
+        m_numClasses = m_hasObjectness ? (m_numOutputs - 5) : (m_numOutputs - 4);
+        m_numKeypoints = 0;
+        if (m_numClasses <= 0) {
+            m_modelType = ModelType::Unknown;
+            m_numClasses = 80;
+        }
     }
 }
 
@@ -225,8 +280,11 @@ bool YoloDetector::analyzeModel()
             m_inputSize = QSize(size, size);
             m_outputAnchorsFirst = anchorsFirst;
             m_hasObjectness = hasObjectness;
+            m_numOutputs = numOutputs;
+
             qDebug() << "Model input size detected:" << size << "x" << size
                      << "anchors:" << numAnchors
+                     << "outputs:" << numOutputs
                      << "layout:" << (anchorsFirst ? "[1,A,F]" : "[1,F,A]")
                      << "objness:" << hasObjectness;
 
@@ -482,7 +540,9 @@ QVector<Annotation> YoloDetector::postprocessPose(const cv::Mat& output,
     results.reserve(50);  // 预分配
 
     // Output shape: [1, numOutputs, numAnchors]
-    // numOutputs = 4 + 1 + numKeypoints * 3
+    // numOutputs depends on class count and keypoint count:
+    //   1-class:  [x,y,w,h, conf,     kp*3*N] -> offset 5
+    //   C-class:  [x,y,w,h, obj, cls*C, kp*3*N] or [x,y,w,h, cls*C, kp*3*N]
     if (output.dims != 3) return results;
     int numAnchors = m_outputAnchorsFirst ? output.size[1] : output.size[2];
     int numOutputs = m_outputAnchorsFirst ? output.size[2] : output.size[1];
@@ -499,9 +559,33 @@ QVector<Annotation> YoloDetector::postprocessPose(const cv::Mat& output,
     const float invImgH = 1.0f / imgH;
     const float invScale = 1.0f / info.scale;
 
+    int numClasses = m_numClasses;
+    bool multiClass = (numClasses > 1);
+    int classStart = m_hasObjectness ? 5 : 4;  // where class scores begin
+    int kpOffset = multiClass ? (classStart + numClasses) : 5;  // where keypoints begin
+
     for (int i = 0; i < numAnchors; i++) {
         const float* row = dataPtr + i * numOutputs;
-        float conf = row[4];
+
+        float conf;
+        int classId = 0;
+
+        if (multiClass) {
+            // Multi-class pose: find max class score
+            const float* classScores = row + classStart;
+            float maxScore = classScores[0];
+            for (int c = 1; c < numClasses; c++) {
+                if (classScores[c] > maxScore) {
+                    maxScore = classScores[c];
+                    classId = c;
+                }
+            }
+            conf = m_hasObjectness ? (row[4] * maxScore) : maxScore;
+        } else {
+            // Standard 1-class pose: confidence at index 4
+            conf = row[4];
+            classId = 0;
+        }
 
         if (conf < m_confThreshold) continue;
 
@@ -522,7 +606,7 @@ QVector<Annotation> YoloDetector::postprocessPose(const cv::Mat& output,
         if (x2 <= x1 || y2 <= y1) continue;
 
         Annotation ann;
-        ann.setClassId(0);
+        ann.setClassId(classId);
         ann.setConfidence(conf);
 
         BoundingBox bbox;
@@ -535,7 +619,7 @@ QVector<Annotation> YoloDetector::postprocessPose(const cv::Mat& output,
         // Parse keypoints
         QVector<Keypoint> keypoints;
         keypoints.reserve(m_numKeypoints);
-        const float* kpBase = row + 5;
+        const float* kpBase = row + kpOffset;
 
         for (int k = 0; k < m_numKeypoints; k++) {
             float kx = kpBase[k * 3];
@@ -550,11 +634,8 @@ QVector<Annotation> YoloDetector::postprocessPose(const cv::Mat& output,
             kx = std::clamp(kx * invImgW, 0.0f, 1.0f);
             ky = std::clamp(ky * invImgH, 0.0f, 1.0f);
 
-            Keypoint kp;
-            kp.setX(kx);
-            kp.setY(ky);
-            // Visibility: 0=not visible, 1=occluded, 2=visible
-            kp.setVisibility(kconf > 0.5f ? 2 : 0);
+            // 使用带参构造函数确保 m_valid = true
+            Keypoint kp(kx, ky, kconf > 0.5f ? 2 : 0);
             keypoints.append(kp);
         }
         ann.setKeypoints(keypoints);

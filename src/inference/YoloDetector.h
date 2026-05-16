@@ -61,6 +61,7 @@ public:
 
     // 模型信息
     ModelType modelType() const { return m_modelType; }
+    void setModelType(ModelType type, int classCountHint = -1);
     QString modelTypeString() const;
     QSize inputSize() const { return m_inputSize; }
     int numClasses() const { return m_numClasses; }
@@ -98,8 +99,11 @@ private:
     QString m_modelPath;
     ModelType m_modelType = ModelType::Unknown;
     QSize m_inputSize{640, 640};
+    int m_numOutputs = 0;   // raw feature count from model analysis
     int m_numClasses = 80;
     int m_numKeypoints = 0;
+    bool m_outputAnchorsFirst = false;  // true if layout is [1, A, F]
+    bool m_hasObjectness = false;       // true if YOLOv5-style with objectness
     float m_confThreshold = 0.25f;
     float m_iouThreshold = 0.45f;
     InferenceBackend m_backend = InferenceBackend::CPU;

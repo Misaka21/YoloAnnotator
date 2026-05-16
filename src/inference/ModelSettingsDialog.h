@@ -38,6 +38,7 @@ private:
 
     // 模型信息
     QLabel* m_modelTypeLabel;
+    QComboBox* m_modelTypeCombo;  // 模型类型覆盖
     QLabel* m_inputSizeLabel;
     QLabel* m_classesLabel;
 

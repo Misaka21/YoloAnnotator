@@ -259,6 +259,10 @@ void MainWindow::setupMenus() {
         m_autoAnnotateAction->setEnabled(true);
         m_batchAnnotateAction->setEnabled(true);
         unannotatedAction->setEnabled(true);
+
+        // 根据项目配置的任务类型自动修正模型类型
+        autoCorrectModelType();
+
         // 检查模型类别数是否超过classes.txt
         if (m_classesLoader.classCount() > 0 && m_detector->numClasses() > m_classesLoader.classCount()) {
             QMessageBox::warning(this, "类别数量不匹配",
@@ -822,6 +826,35 @@ void MainWindow::onModelSettings() {
     dialog.exec();
 }
 
+void MainWindow::autoCorrectModelType()
+{
+    if (!m_detector->isLoaded() || !m_datasetConfig.isValid()) return;
+
+    ModelType detected = m_detector->modelType();
+    int classCount = m_classesLoader.classCount();
+
+    if (m_datasetConfig.isPose() && detected == ModelType::Detection) {
+        m_detector->setModelType(ModelType::Pose, classCount);
+        if (m_detector->modelType() == ModelType::Pose) {
+            QMessageBox::information(this, "模型类型已修正",
+                QString("项目配置为姿态估计 (Pose)，模型已自动切换。\n"
+                        "%1 类别, %2 关键点\n\n"
+                        "可在 自动标注 → 模型设置 中手动调整。")
+                .arg(m_detector->numClasses())
+                .arg(m_detector->numKeypoints()));
+        }
+    } else if (m_datasetConfig.isDetection() && detected == ModelType::Pose) {
+        m_detector->setModelType(ModelType::Detection, classCount);
+        if (m_detector->modelType() == ModelType::Detection) {
+            QMessageBox::information(this, "模型类型已修正",
+                QString("项目配置为目标检测 (Detection)，模型已自动切换。\n"
+                        "%1 类别\n\n"
+                        "可在 自动标注 → 模型设置 中手动调整。")
+                .arg(m_detector->numClasses()));
+        }
+    }
+}
+
 void MainWindow::onAutoAnnotateCurrent() {
     if (!m_detector->isLoaded()) {
         QMessageBox::warning(this, "警告", "请先加载ONNX模型\n(自动标注 -> 模型设置)");
@@ -1281,6 +1314,9 @@ void MainWindow::loadProject(const DatasetConfig& config, const QString& knownIm
             m_datasetConfig.saveYAML(config.projectPath());
         }
     }
+
+    // 如果模型已加载，根据项目任务类型自动修正
+    autoCorrectModelType();
 
     updateClassList();
     setWindowTitle(QString("YOLO 标注工具 - %1").arg(

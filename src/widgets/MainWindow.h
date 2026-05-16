@@ -220,4 +220,5 @@ private:
     void loadImagesFromPath(const QString& imagePath);
     QString findYamlInFolder(const QString& folder);
     QString findClassesTxtInFolder(const QString& folder);
+    void autoCorrectModelType();  // 根据项目配置自动修正模型类型
 };
