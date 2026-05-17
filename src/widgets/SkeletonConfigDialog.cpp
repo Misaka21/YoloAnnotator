@@ -376,6 +376,7 @@ void SkeletonConfigDialog::refreshKeypointTable()
 
 void SkeletonConfigDialog::refreshBoneTable()
 {
+    m_suppressBoneSignals = true;  // 防止 setCurrentIndex 触发 clearBones 风暴
     m_boneTable->blockSignals(true);
     m_boneTable->clearContents();
     const auto& bones = m_config.bones();
@@ -391,16 +392,16 @@ void SkeletonConfigDialog::refreshBoneTable()
         }
         fromCombo->setCurrentIndex(bone.from);
         connect(fromCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, boneIndex](int newFrom) {
+            if (m_suppressBoneSignals) return;
             auto bones = m_config.bones();
             if (boneIndex < bones.size()) {
                 BoneConnection newBone(newFrom, bones[boneIndex].to, bones[boneIndex].color);
                 m_config.clearBones();
                 for (int j = 0; j < bones.size(); ++j) {
-                    if (j == boneIndex) {
+                    if (j == boneIndex)
                         m_config.addBone(newBone.from, newBone.to, newBone.color);
-                    } else {
+                    else
                         m_config.addBone(bones[j].from, bones[j].to, bones[j].color);
-                    }
                 }
                 updatePreviewLines();
             }
@@ -413,16 +414,16 @@ void SkeletonConfigDialog::refreshBoneTable()
         }
         toCombo->setCurrentIndex(bone.to);
         connect(toCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, boneIndex](int newTo) {
+            if (m_suppressBoneSignals) return;
             auto bones = m_config.bones();
             if (boneIndex < bones.size()) {
                 BoneConnection newBone(bones[boneIndex].from, newTo, bones[boneIndex].color);
                 m_config.clearBones();
                 for (int j = 0; j < bones.size(); ++j) {
-                    if (j == boneIndex) {
+                    if (j == boneIndex)
                         m_config.addBone(newBone.from, newBone.to, newBone.color);
-                    } else {
+                    else
                         m_config.addBone(bones[j].from, bones[j].to, bones[j].color);
-                    }
                 }
                 updatePreviewLines();
             }
@@ -435,6 +436,7 @@ void SkeletonConfigDialog::refreshBoneTable()
         m_boneTable->setItem(i, 2, colorItem);
     }
     m_boneTable->blockSignals(false);
+    m_suppressBoneSignals = false;  // 恢复信号处理
 }
 
 void SkeletonConfigDialog::updateBoneComboBoxes()
@@ -454,18 +456,6 @@ void SkeletonConfigDialog::updatePreview()
 
     if (m_previewPositions.size() != count) {
         m_previewPositions = getDefaultPositions(count);
-    }
-
-    // 绘制骨架连线
-    for (const auto& bone : m_config.bones()) {
-        if (bone.from < count && bone.to < count) {
-            QGraphicsLineItem* line = m_previewScene->addLine(
-                m_previewPositions[bone.from].x(), m_previewPositions[bone.from].y(),
-                m_previewPositions[bone.to].x(), m_previewPositions[bone.to].y(),
-                QPen(bone.color, 2));
-            line->setZValue(0);
-            m_previewLines.append(line);
-        }
     }
 
     // 绘制可拖动的关键点和标签
@@ -490,14 +480,23 @@ void SkeletonConfigDialog::updatePreview()
         m_previewLabels.append(label);
     }
 
+    // 绘制骨架连线
+    updatePreviewLines();
+
     m_previewView->fitInView(m_previewScene->sceneRect().adjusted(-20, -20, 20, 20), Qt::KeepAspectRatio);
 }
 
 void SkeletonConfigDialog::updatePreviewLines()
 {
+    // 确保预览位置与关键点数量同步
     int count = m_config.keypointCount();
+    if (m_previewPositions.size() != count) {
+        m_previewPositions = getDefaultPositions(count);
+    }
+
     const auto& bones = m_config.bones();
 
+    // 如果数量不匹配，完全重建（处理添加/删除骨骼）
     if (m_previewLines.size() != bones.size()) {
         for (auto* line : m_previewLines) {
             m_previewScene->removeItem(line);
@@ -506,8 +505,8 @@ void SkeletonConfigDialog::updatePreviewLines()
         m_previewLines.clear();
 
         for (const auto& bone : bones) {
-            if (bone.from < count && bone.to < count &&
-                bone.from < m_previewPositions.size() && bone.to < m_previewPositions.size()) {
+            if (bone.from >= 0 && bone.from < m_previewPositions.size() &&
+                bone.to >= 0 && bone.to < m_previewPositions.size()) {
                 QGraphicsLineItem* line = m_previewScene->addLine(
                     m_previewPositions[bone.from].x(), m_previewPositions[bone.from].y(),
                     m_previewPositions[bone.to].x(), m_previewPositions[bone.to].y(),
@@ -517,9 +516,11 @@ void SkeletonConfigDialog::updatePreviewLines()
             }
         }
     } else {
+        // 数量匹配时原地更新位置和颜色
         for (int i = 0; i < bones.size() && i < m_previewLines.size(); ++i) {
             const auto& bone = bones[i];
-            if (bone.from < m_previewPositions.size() && bone.to < m_previewPositions.size()) {
+            if (bone.from >= 0 && bone.from < m_previewPositions.size() &&
+                bone.to >= 0 && bone.to < m_previewPositions.size()) {
                 m_previewLines[i]->setLine(
                     m_previewPositions[bone.from].x(), m_previewPositions[bone.from].y(),
                     m_previewPositions[bone.to].x(), m_previewPositions[bone.to].y());

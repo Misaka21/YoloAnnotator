@@ -23,6 +23,7 @@
 #include <QDialog>
 #include <QCheckBox>
 #include <QPushButton>
+#include <QCollator>
 #include "inference/YoloDetector.h"
 #include "inference/ModelSettingsDialog.h"
 
@@ -388,7 +389,16 @@ void MainWindow::onOpenFolder() {
     m_datasetConfig.clear();  // 清除项目配置
     QDir directory(dir);
     QStringList filters = {"*.jpg", "*.jpeg", "*.png", "*.bmp"};
-    m_imageFiles = directory.entryList(filters, QDir::Files, QDir::Name);
+    m_imageFiles = directory.entryList(filters, QDir::Files, QDir::NoSort);
+
+    // 按自然数字序排序（避免 1,10,2 的问题）
+    QCollator collator;
+    collator.setNumericMode(true);
+    std::sort(m_imageFiles.begin(), m_imageFiles.end(),
+        [&collator](const QString& a, const QString& b) {
+            return collator.compare(a, b) < 0;
+        });
+
     if (m_imageFiles.isEmpty()) { QMessageBox::warning(this, "警告", "所选文件夹中没有图片文件!"); return; }
     QString classesPath = dir + "/classes.txt";
     QDir parentDir(dir); parentDir.cdUp();
@@ -1338,7 +1348,15 @@ void MainWindow::loadImagesFromPath(const QString& imagePath) {
 
     QDir directory(imagePath);
     QStringList filters = {"*.jpg", "*.jpeg", "*.png", "*.bmp"};
-    m_imageFiles = directory.entryList(filters, QDir::Files, QDir::Name);
+    m_imageFiles = directory.entryList(filters, QDir::Files, QDir::NoSort);
+
+    // 按自然数字序排序
+    QCollator collator;
+    collator.setNumericMode(true);
+    std::sort(m_imageFiles.begin(), m_imageFiles.end(),
+        [&collator](const QString& a, const QString& b) {
+            return collator.compare(a, b) < 0;
+        });
 
     if (m_imageFiles.isEmpty()) {
         QMessageBox::warning(this, "警告", "所选文件夹中没有图片文件!");

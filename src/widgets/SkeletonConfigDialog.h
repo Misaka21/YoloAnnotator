@@ -68,6 +68,9 @@ private:
     // 项目路径
     QString m_projectPath;
 
+    // 防止 refreshBoneTable 时 combo box 信号风暴
+    bool m_suppressBoneSignals = false;
+
     SkeletonConfig m_config;
 
     void setupUI();

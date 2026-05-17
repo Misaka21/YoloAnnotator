@@ -20,7 +20,8 @@ public:
     explicit VideoExportWorker(QObject* parent = nullptr);
 
     void setParameters(const QString& videoPath, int startFrame, int endFrame,
-                      int frameInterval, const QString& outputPath, const QString& format);
+                      int frameInterval, const QString& outputPath, const QString& format,
+                      const QString& prefix, int digits);
 
 public slots:
     void process();
@@ -38,6 +39,8 @@ private:
     int m_frameInterval;
     QString m_outputPath;
     QString m_format;
+    QString m_prefix;
+    int m_digits;
     std::atomic<bool> m_stop;
 };
 
@@ -87,6 +90,8 @@ private:
     QSpinBox* m_endFrameSpinBox;
     QSpinBox* m_frameIntervalSpinBox;
     QComboBox* m_formatCombo;
+    QLineEdit* m_prefixEdit;
+    QSpinBox* m_digitsSpinBox;
     QLineEdit* m_outputPathEdit;
     QPushButton* m_browseOutputBtn;
     QLabel* m_statusLabel;

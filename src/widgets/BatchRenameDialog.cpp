@@ -9,6 +9,7 @@
 #include <QHeaderView>
 #include <QProgressDialog>
 #include <QApplication>
+#include <QCollator>
 #include <QRegularExpression>
 
 BatchRenameDialog::BatchRenameDialog(QWidget* parent)
@@ -119,9 +120,14 @@ void BatchRenameDialog::setProjectPath(const QString& imagePath, const QString& 
 }
 
 void BatchRenameDialog::setImageFiles(const QStringList& imageFiles) {
-    // 按字典序排序（保持相对顺序）
+    // 按自然数字序排序（1,2,3...而非1,10,2...）
     m_imageFiles = imageFiles;
-    m_imageFiles.sort();
+    QCollator collator;
+    collator.setNumericMode(true);
+    std::sort(m_imageFiles.begin(), m_imageFiles.end(),
+        [&collator](const QString& a, const QString& b) {
+            return collator.compare(a, b) < 0;
+        });
 
     m_statusLabel->setText(QString("共 %1 个文件").arg(m_imageFiles.size()));
 

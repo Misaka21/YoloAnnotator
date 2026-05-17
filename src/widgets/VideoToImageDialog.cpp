@@ -15,13 +15,16 @@ VideoExportWorker::VideoExportWorker(QObject* parent)
     : QObject(parent), m_stop(false) {}
 
 void VideoExportWorker::setParameters(const QString& videoPath, int startFrame, int endFrame,
-                                      int frameInterval, const QString& outputPath, const QString& format) {
+                                      int frameInterval, const QString& outputPath, const QString& format,
+                                      const QString& prefix, int digits) {
     m_videoPath = videoPath;
     m_startFrame = startFrame;
     m_endFrame = endFrame;
     m_frameInterval = frameInterval;
     m_outputPath = outputPath;
     m_format = format;
+    m_prefix = prefix;
+    m_digits = digits;
     m_stop = false;
 }
 
@@ -62,6 +65,7 @@ void VideoExportWorker::process() {
 
     int totalToExtract = (m_endFrame - m_startFrame) / m_frameInterval + 1;
     int extracted = 0;
+    int seqNumber = 1;  // sequential numbering starting from 1
 
     for (int i = m_startFrame; i <= m_endFrame && !m_stop; i += m_frameInterval) {
         // 跳转到帧
@@ -73,9 +77,12 @@ void VideoExportWorker::process() {
             continue;
         }
 
-        // 生成文件名 frame_000123.jpg
-        QString fileName = QString("frame_%1.%2")
-            .arg(i, 6, 10, QChar('0'))
+        // 生成文件名 {prefix}_{seq}.{format}
+        QString prefix = m_prefix.isEmpty() ? "frame" : m_prefix;
+        int digits = qBound(3, m_digits, 8);
+        QString fileName = QString("%1_%2.%3")
+            .arg(prefix)
+            .arg(seqNumber++, digits, 10, QChar('0'))
             .arg(m_format);
         QString filePath = m_outputPath + "/" + fileName;
 
@@ -213,6 +220,17 @@ void VideoToImageDialog::setupUI() {
     outputPathLayout->addWidget(m_browseOutputBtn);
     outputFormLayout->addRow("输出路径:", outputPathLayout);
 
+    m_prefixEdit = new QLineEdit("frame", this);
+    m_prefixEdit->setPlaceholderText("文件名前缀，例如：frame, img");
+    m_prefixEdit->setEnabled(false);
+    outputFormLayout->addRow("文件名前缀:", m_prefixEdit);
+
+    m_digitsSpinBox = new QSpinBox(this);
+    m_digitsSpinBox->setRange(3, 8);
+    m_digitsSpinBox->setValue(6);
+    m_digitsSpinBox->setEnabled(false);
+    outputFormLayout->addRow("序号位数:", m_digitsSpinBox);
+
     m_formatCombo = new QComboBox(this);
     m_formatCombo->addItem("JPEG (*.jpg)");
     m_formatCombo->addItem("PNG (*.png)");
@@ -324,6 +342,8 @@ void VideoToImageDialog::loadVideo(const QString& path) {
     m_endFrameSpinBox->setEnabled(true);
 
     m_frameIntervalSpinBox->setEnabled(true);
+    m_prefixEdit->setEnabled(true);
+    m_digitsSpinBox->setEnabled(true);
     m_formatCombo->setEnabled(true);
     m_browseOutputBtn->setEnabled(true);
     m_exportBtn->setEnabled(true);
@@ -488,7 +508,9 @@ void VideoToImageDialog::onExport() {
         m_endFrameSpinBox->value(),
         m_frameIntervalSpinBox->value(),
         outputPath,
-        m_formatCombo->currentIndex() == 0 ? "jpg" : "png"
+        m_formatCombo->currentIndex() == 0 ? "jpg" : "png",
+        m_prefixEdit->text(),
+        m_digitsSpinBox->value()
     );
     m_exportWorker->moveToThread(m_exportThread);
 
