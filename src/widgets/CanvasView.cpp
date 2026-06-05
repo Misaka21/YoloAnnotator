@@ -279,16 +279,20 @@ void CanvasView::zoomOriginal() {
 }
 
 void CanvasView::wheelEvent(QWheelEvent* event) {
-    // 触控板滚动事件交给手势处理（PinchGesture/PanGesture），避免冲突
+    // 触控板双指滑动 → 平移画布（捏合缩放由 PinchGesture 处理）
     if (event->phase() != Qt::NoScrollPhase) {
+        QPointF d = event->pixelDelta();
+        if (d.isNull()) {
+            d = event->angleDelta();
+        }
+        horizontalScrollBar()->setValue(horizontalScrollBar()->value() - d.x());
+        verticalScrollBar()->setValue(verticalScrollBar()->value() - d.y());
         event->accept();
         return;
     }
 
-    // 计算缩放因子
+    // 鼠标滚轮 → 缩放
     double factor = (event->angleDelta().y() > 0) ? 1.15 : (1.0 / 1.15);
-
-    // 限制缩放范围
     double currentScale = transform().m11();
     double newScale = currentScale * factor;
     if (newScale < 0.1 || newScale > 50.0) {
@@ -296,19 +300,10 @@ void CanvasView::wheelEvent(QWheelEvent* event) {
         return;
     }
 
-    // 获取鼠标在场景中的位置（缩放前）
     QPointF targetScenePos = mapToScene(event->position().toPoint());
-
-    // 执行缩放
     scale(factor, factor);
-
-    // 获取同一场景点在缩放后的视口位置
     QPointF targetViewPos = mapFromScene(targetScenePos);
-
-    // 计算需要调整的偏移量，使场景点回到鼠标位置
     QPointF delta = targetViewPos - event->position();
-
-    // 调整滚动条
     horizontalScrollBar()->setValue(horizontalScrollBar()->value() + int(delta.x()));
     verticalScrollBar()->setValue(verticalScrollBar()->value() + int(delta.y()));
 
