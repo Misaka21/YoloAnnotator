@@ -6,7 +6,7 @@
 
 ![screenshot](docs/screenshot.png)
 ![screenshot2](docs/screenshot2.jpg)
-![alt text](image.png)
+![screenshot3](docs/screenshot3.png)
 ## 特性
 
 - **原生 YOLO 格式** — 直接读写 txt 标注文件，无需导入导出
@@ -83,7 +83,10 @@ tube
 | 批量重命名     | 按规则批量重命名图片与对应的标注文件         |
 | 分割数据集     | 按比例将数据随机分割为训练集/验证集/测试集   |
 | 数据集分析     | 统计类别分布、标注数量、宽高比等数据概览     |
-
+![alt text](image-1.png)
+![alt text](image-2.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
 ## 提示
 
 类别名称前缀会自动分配边界框颜色：
