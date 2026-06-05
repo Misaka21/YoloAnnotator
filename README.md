@@ -87,10 +87,13 @@ tube
 | 批量重命名     | 按规则批量重命名图片与对应的标注文件         |
 | 分割数据集     | 按比例将数据随机分割为训练集/验证集/测试集   |
 | 数据集分析     | 统计类别分布、标注数量、宽高比等数据概览     |
-![alt text](image-1.png)
-![alt text](image-2.png)
-![alt text](image-3.png)
-![alt text](image-4.png)
+
+
+
+![screenshot4](docs/screenshot4.png)
+![screenshot5](docs/screenshot5.png)
+![screenshot6](docs/screenshot6.png)
+![screenshot7](docs/screenshot7.png)
 ## 提示
 
 类别名称前缀会自动分配边界框颜色：
