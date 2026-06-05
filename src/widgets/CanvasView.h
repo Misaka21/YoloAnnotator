@@ -2,6 +2,7 @@
 #include <QGraphicsView>
 #include <QGraphicsScene>
 #include <QGraphicsPixmapItem>
+#include <QGestureEvent>
 #include "core/CoordinateTransform.h"
 #include "core/Annotation.h"
 #include "core/SkeletonConfig.h"
@@ -106,6 +107,7 @@ protected:
     void leaveEvent(QEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
+    bool viewportEvent(QEvent* event) override;
 
 private:
     // 重置光标为当前模式对应的光标
@@ -143,6 +145,9 @@ private:
     bool m_panning = false;
     QPoint m_panStart;
     QPoint m_rightClickPos;  // 右键按下的初始位置，用于区分点击和拖动
+
+    // 手势状态
+    qreal m_pinchBaseScale = 1.0;  // 手势开始时的缩放基准
 
     // 拖动状态
     bool m_dragging = false;

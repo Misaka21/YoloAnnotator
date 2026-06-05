@@ -6,6 +6,8 @@
 #include <QFocusEvent>
 #include <QScrollBar>
 #include <QContextMenuEvent>
+#include <QPinchGesture>
+#include <QPanGesture>
 #include <QTextDocument>
 #include <QFile>
 #include <opencv2/imgcodecs.hpp>
@@ -35,9 +37,50 @@ CanvasView::CanvasView(QWidget* parent)
     m_crossHairV->setZValue(1000);
     m_crossHairH->setVisible(false);
     m_crossHairV->setVisible(false);
+
+    // 触控板手势支持
+    viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
+    viewport()->grabGesture(Qt::PinchGesture);
+    viewport()->grabGesture(Qt::PanGesture);
 }
 
 CanvasView::~CanvasView() = default;
+
+bool CanvasView::viewportEvent(QEvent* event) {
+    if (event->type() == QEvent::Gesture) {
+        auto* ge = static_cast<QGestureEvent*>(event);
+
+        if (QPanGesture* pan = static_cast<QPanGesture*>(ge->gesture(Qt::PanGesture))) {
+            // 双指拖动 → 平移画布
+            QPointF delta = pan->delta();
+            horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
+            verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
+            return true;
+        }
+
+        if (QPinchGesture* pinch = static_cast<QPinchGesture*>(ge->gesture(Qt::PinchGesture))) {
+            if (pinch->state() == Qt::GestureStarted) {
+                m_pinchBaseScale = transform().m11();
+            }
+            qreal desired = m_pinchBaseScale * pinch->totalScaleFactor();
+            qreal current = transform().m11();
+            qreal factor = desired / current;
+            if (factor > 0.0 && desired >= 0.1 && desired <= 50.0) {
+                QPointF center = mapToScene(pinch->centerPoint().toPoint());
+                scale(factor, factor);
+                QPointF delta = mapFromScene(center) - pinch->centerPoint();
+                horizontalScrollBar()->setValue(horizontalScrollBar()->value() + int(delta.x()));
+                verticalScrollBar()->setValue(verticalScrollBar()->value() + int(delta.y()));
+            }
+            if (pinch->state() == Qt::GestureFinished) {
+                emit zoomChanged(transform().m11());
+                updateAnnotationItems();
+            }
+            return true;
+        }
+    }
+    return QGraphicsView::viewportEvent(event);
+}
 
 void CanvasView::setImage(const QImage& image) {
     m_image = image;
