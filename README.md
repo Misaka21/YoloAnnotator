@@ -7,6 +7,10 @@
 ![screenshot](docs/screenshot.png)
 ![screenshot2](docs/screenshot2.jpg)
 ![screenshot3](docs/screenshot3.png)
+![screenshot4](docs/screenshot4.png)
+![screenshot5](docs/screenshot5.png)
+![screenshot6](docs/screenshot6.png)
+![screenshot7](docs/screenshot7.png)
 ## 特性
 
 - **原生 YOLO 格式** — 直接读写 txt 标注文件，无需导入导出
