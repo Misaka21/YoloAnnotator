@@ -122,12 +122,26 @@ VideoToImageDialog::~VideoToImageDialog() {
     if (m_capture.isOpened()) {
         m_capture.release();
     }
-    if (m_exportThread && m_exportThread->isRunning()) {
-        if (m_exportWorker) {
-            m_exportWorker->requestStop();
+    if (m_exportThread) {
+        if (m_exportThread->isRunning()) {
+            // 线程仍在运行：断开所有连接，停止线程，手动清理
+            disconnect(m_exportThread, &QThread::finished, m_exportWorker, &QObject::deleteLater);
+            disconnect(m_exportThread, &QThread::finished, m_exportThread, &QObject::deleteLater);
+            if (m_exportWorker) {
+                m_exportWorker->requestStop();
+                disconnect(m_exportWorker, nullptr, this, nullptr);
+            }
+            m_exportThread->quit();
+            if (!m_exportThread->wait(3000)) {
+                m_exportThread->terminate();
+                m_exportThread->wait();
+            }
+            delete m_exportWorker;
+            delete m_exportThread;
         }
-        m_exportThread->quit();
-        m_exportThread->wait();
+        // 线程已结束：deleteLater已由finished信号触发，无需手动删除
+        m_exportWorker = nullptr;
+        m_exportThread = nullptr;
     }
 }
 
@@ -499,8 +513,13 @@ void VideoToImageDialog::onExport() {
         return;
     }
 
-    // 创建线程和Worker
-    m_exportThread = new QThread(this);
+    // 防止重复导出（正常由按钮禁用保证，此处为兜底）
+    if (m_exportThread && m_exportThread->isRunning()) {
+        return;
+    }
+
+    // 创建线程和Worker（不设置parent，避免与deleteLater冲突导致double-free）
+    m_exportThread = new QThread();
     m_exportWorker = new VideoExportWorker();
     m_exportWorker->setParameters(
         m_videoPath,
