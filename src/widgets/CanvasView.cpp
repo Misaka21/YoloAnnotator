@@ -51,7 +51,6 @@ bool CanvasView::viewportEvent(QEvent* event) {
         auto* ge = static_cast<QGestureEvent*>(event);
 
         if (QPanGesture* pan = static_cast<QPanGesture*>(ge->gesture(Qt::PanGesture))) {
-            // 双指拖动 → 平移画布
             QPointF delta = pan->delta();
             horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
             verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
@@ -59,18 +58,15 @@ bool CanvasView::viewportEvent(QEvent* event) {
         }
 
         if (QPinchGesture* pinch = static_cast<QPinchGesture*>(ge->gesture(Qt::PinchGesture))) {
-            if (pinch->state() == Qt::GestureStarted) {
-                m_pinchBaseScale = transform().m11();
-            }
-            qreal desired = m_pinchBaseScale * pinch->totalScaleFactor();
-            qreal current = transform().m11();
-            qreal factor = desired / current;
-            if (factor > 0.0 && desired >= 0.1 && desired <= 50.0) {
+            // 使用增量 scaleFactor 而非 totalScaleFactor，避免初始跳动
+            qreal factor = pinch->scaleFactor();
+            qreal newScale = transform().m11() * factor;
+            if (factor != 1.0 && newScale >= 0.1 && newScale <= 50.0) {
                 QPointF center = mapToScene(pinch->centerPoint().toPoint());
                 scale(factor, factor);
-                QPointF delta = mapFromScene(center) - pinch->centerPoint();
-                horizontalScrollBar()->setValue(horizontalScrollBar()->value() + int(delta.x()));
-                verticalScrollBar()->setValue(verticalScrollBar()->value() + int(delta.y()));
+                QPointF d = mapFromScene(center) - pinch->centerPoint();
+                horizontalScrollBar()->setValue(horizontalScrollBar()->value() + int(d.x()));
+                verticalScrollBar()->setValue(verticalScrollBar()->value() + int(d.y()));
             }
             if (pinch->state() == Qt::GestureFinished) {
                 emit zoomChanged(transform().m11());
@@ -283,6 +279,12 @@ void CanvasView::zoomOriginal() {
 }
 
 void CanvasView::wheelEvent(QWheelEvent* event) {
+    // 触控板滚动事件交给手势处理（PinchGesture/PanGesture），避免冲突
+    if (event->phase() != Qt::NoScrollPhase) {
+        event->accept();
+        return;
+    }
+
     // 计算缩放因子
     double factor = (event->angleDelta().y() > 0) ? 1.15 : (1.0 / 1.15);
 

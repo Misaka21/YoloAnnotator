@@ -146,9 +146,6 @@ private:
     QPoint m_panStart;
     QPoint m_rightClickPos;  // 右键按下的初始位置，用于区分点击和拖动
 
-    // 手势状态
-    qreal m_pinchBaseScale = 1.0;  // 手势开始时的缩放基准
-
     // 拖动状态
     bool m_dragging = false;
     int m_dragAnnIndex = -1;
