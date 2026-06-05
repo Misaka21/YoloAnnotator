@@ -107,7 +107,7 @@ protected:
     void leaveEvent(QEvent* event) override;
     void enterEvent(QEnterEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
-    bool viewportEvent(QEvent* event) override;
+    bool event(QEvent* event) override;
 
 private:
     // 重置光标为当前模式对应的光标

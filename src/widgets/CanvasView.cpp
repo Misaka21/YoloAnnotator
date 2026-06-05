@@ -7,7 +7,6 @@
 #include <QScrollBar>
 #include <QContextMenuEvent>
 #include <QPinchGesture>
-#include <QPanGesture>
 #include <QTextDocument>
 #include <QFile>
 #include <opencv2/imgcodecs.hpp>
@@ -38,27 +37,16 @@ CanvasView::CanvasView(QWidget* parent)
     m_crossHairH->setVisible(false);
     m_crossHairV->setVisible(false);
 
-    // 触控板手势支持
-    viewport()->setAttribute(Qt::WA_AcceptTouchEvents);
-    viewport()->grabGesture(Qt::PinchGesture);
-    viewport()->grabGesture(Qt::PanGesture);
+    // 触控板捏合手势（在 CanvasView 自身而非 viewport，避免干扰鼠标事件）
+    grabGesture(Qt::PinchGesture);
 }
 
 CanvasView::~CanvasView() = default;
 
-bool CanvasView::viewportEvent(QEvent* event) {
-    if (event->type() == QEvent::Gesture) {
-        auto* ge = static_cast<QGestureEvent*>(event);
-
-        if (QPanGesture* pan = static_cast<QPanGesture*>(ge->gesture(Qt::PanGesture))) {
-            QPointF delta = pan->delta();
-            horizontalScrollBar()->setValue(horizontalScrollBar()->value() - delta.x());
-            verticalScrollBar()->setValue(verticalScrollBar()->value() - delta.y());
-            return true;
-        }
-
+bool CanvasView::event(QEvent* e) {
+    if (e->type() == QEvent::Gesture) {
+        auto* ge = static_cast<QGestureEvent*>(e);
         if (QPinchGesture* pinch = static_cast<QPinchGesture*>(ge->gesture(Qt::PinchGesture))) {
-            // 使用增量 scaleFactor 而非 totalScaleFactor，避免初始跳动
             qreal factor = pinch->scaleFactor();
             qreal newScale = transform().m11() * factor;
             if (factor != 1.0 && newScale >= 0.1 && newScale <= 50.0) {
@@ -75,7 +63,7 @@ bool CanvasView::viewportEvent(QEvent* event) {
             return true;
         }
     }
-    return QGraphicsView::viewportEvent(event);
+    return QGraphicsView::event(e);
 }
 
 void CanvasView::setImage(const QImage& image) {
