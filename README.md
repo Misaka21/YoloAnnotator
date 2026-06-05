@@ -6,7 +6,7 @@
 
 ![screenshot](docs/screenshot.png)
 ![screenshot2](docs/screenshot2.jpg)
-
+![alt text](image.png)
 ## 特性
 
 - **原生 YOLO 格式** — 直接读写 txt 标注文件，无需导入导出

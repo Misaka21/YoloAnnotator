@@ -41,6 +41,14 @@ void SkeletonConfig::addBone(int from, int to, const QColor& color) {
     }
 }
 
+void SkeletonConfig::setBone(int index, int from, int to, const QColor& color) {
+    if (index >= 0 && index < m_bones.size() &&
+        from >= 0 && from < m_keypointDefs.size() &&
+        to >= 0 && to < m_keypointDefs.size() && from != to) {
+        m_bones[index] = BoneConnection(from, to, color);
+    }
+}
+
 void SkeletonConfig::removeBone(int index) {
     if (index >= 0 && index < m_bones.size()) {
         m_bones.removeAt(index);

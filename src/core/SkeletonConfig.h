@@ -49,6 +49,7 @@ public:
     // 骨架连接
     const QVector<BoneConnection>& bones() const { return m_bones; }
     void addBone(int from, int to, const QColor& color = Qt::cyan);
+    void setBone(int index, int from, int to, const QColor& color = Qt::cyan);
     void removeBone(int index);
     void clearBones();
 

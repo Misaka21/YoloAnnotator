@@ -83,7 +83,6 @@ void SkeletonConfigDialog::setupUI()
     m_keypointTable->setColumnWidth(1, 120);
     m_keypointTable->setColumnWidth(2, 50);
     m_keypointTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_keypointTable->setMaximumHeight(180);
     keypointLayout->addWidget(m_keypointTable);
 
     QHBoxLayout* keypointBtnLayout = new QHBoxLayout();
@@ -106,7 +105,6 @@ void SkeletonConfigDialog::setupUI()
     m_boneTable->setColumnWidth(1, 80);
     m_boneTable->setColumnWidth(2, 50);
     m_boneTable->setSelectionBehavior(QAbstractItemView::SelectRows);
-    m_boneTable->setMaximumHeight(180);
     boneLayout->addWidget(m_boneTable);
 
     QHBoxLayout* boneBtnLayout = new QHBoxLayout();
@@ -163,12 +161,8 @@ void SkeletonConfigDialog::setupUI()
         if (column == 2 && row < m_config.bones().size()) {
             QColor color = QColorDialog::getColor(m_config.bones()[row].color, this, "选择连线颜色");
             if (color.isValid()) {
-                auto bones = m_config.bones();
-                bones[row].color = color;
-                m_config.clearBones();
-                for (const auto& bone : bones) {
-                    m_config.addBone(bone.from, bone.to, bone.color);
-                }
+                const auto& b = m_config.bones();
+                m_config.setBone(row, b[row].from, b[row].to, color);
                 refreshBoneTable();
                 updatePreviewLines();
             }
@@ -306,7 +300,10 @@ void SkeletonConfigDialog::onRemoveKeypoint()
 
 void SkeletonConfigDialog::onAddBone()
 {
-    if (m_config.keypointCount() < 2) return;
+    if (m_config.keypointCount() < 2) {
+        QMessageBox::information(this, "提示", "请先添加至少 2 个关键点");
+        return;
+    }
     m_config.addBone(0, 1, Qt::cyan);
     refreshBoneTable();
     updatePreviewLines();
@@ -376,35 +373,33 @@ void SkeletonConfigDialog::refreshKeypointTable()
 
 void SkeletonConfigDialog::refreshBoneTable()
 {
-    m_suppressBoneSignals = true;  // 防止 setCurrentIndex 触发 clearBones 风暴
+    m_suppressBoneSignals = true;
     m_boneTable->blockSignals(true);
+
+    // 清理旧控件再重置行数，防止残留
+    for (int r = 0; r < m_boneTable->rowCount(); ++r) {
+        m_boneTable->removeCellWidget(r, 0);
+        m_boneTable->removeCellWidget(r, 1);
+    }
     m_boneTable->clearContents();
     const auto& bones = m_config.bones();
     m_boneTable->setRowCount(bones.size());
 
     for (int i = 0; i < bones.size(); ++i) {
         const BoneConnection& bone = bones[i];
-        const int boneIndex = i;
 
         QComboBox* fromCombo = new QComboBox();
         for (int j = 0; j < m_config.keypointCount(); ++j) {
             fromCombo->addItem(QString("%1: %2").arg(j).arg(m_config.keypointName(j)), j);
         }
         fromCombo->setCurrentIndex(bone.from);
-        connect(fromCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, boneIndex](int newFrom) {
+        const int idx = i;
+        connect(fromCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, idx](int v) {
             if (m_suppressBoneSignals) return;
-            auto bones = m_config.bones();
-            if (boneIndex < bones.size()) {
-                BoneConnection newBone(newFrom, bones[boneIndex].to, bones[boneIndex].color);
-                m_config.clearBones();
-                for (int j = 0; j < bones.size(); ++j) {
-                    if (j == boneIndex)
-                        m_config.addBone(newBone.from, newBone.to, newBone.color);
-                    else
-                        m_config.addBone(bones[j].from, bones[j].to, bones[j].color);
-                }
-                updatePreviewLines();
-            }
+            const auto& b = m_config.bones();
+            if (idx < b.size())
+                m_config.setBone(idx, v, b[idx].to, b[idx].color);
+            updatePreviewLines();
         });
         m_boneTable->setCellWidget(i, 0, fromCombo);
 
@@ -413,20 +408,12 @@ void SkeletonConfigDialog::refreshBoneTable()
             toCombo->addItem(QString("%1: %2").arg(j).arg(m_config.keypointName(j)), j);
         }
         toCombo->setCurrentIndex(bone.to);
-        connect(toCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, boneIndex](int newTo) {
+        connect(toCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this, idx](int v) {
             if (m_suppressBoneSignals) return;
-            auto bones = m_config.bones();
-            if (boneIndex < bones.size()) {
-                BoneConnection newBone(bones[boneIndex].from, newTo, bones[boneIndex].color);
-                m_config.clearBones();
-                for (int j = 0; j < bones.size(); ++j) {
-                    if (j == boneIndex)
-                        m_config.addBone(newBone.from, newBone.to, newBone.color);
-                    else
-                        m_config.addBone(bones[j].from, bones[j].to, bones[j].color);
-                }
-                updatePreviewLines();
-            }
+            const auto& b = m_config.bones();
+            if (idx < b.size())
+                m_config.setBone(idx, b[idx].from, v, b[idx].color);
+            updatePreviewLines();
         });
         m_boneTable->setCellWidget(i, 1, toCombo);
 
@@ -436,7 +423,7 @@ void SkeletonConfigDialog::refreshBoneTable()
         m_boneTable->setItem(i, 2, colorItem);
     }
     m_boneTable->blockSignals(false);
-    m_suppressBoneSignals = false;  // 恢复信号处理
+    m_suppressBoneSignals = false;
 }
 
 void SkeletonConfigDialog::updateBoneComboBoxes()
