@@ -324,11 +324,15 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
                 const BoundingBox& selBbox = selAnn.boundingBox();
                 double imgW = m_image.width();
                 double imgH = m_image.height();
+                double scale = transform().m11();
                 double nx = scenePos.x() / imgW;
                 double ny = scenePos.y() / imgH;
+                // 给边缘留容差，角点圆点可能略超出bbox
+                double epsX = 10.0 / scale / imgW;
+                double epsY = 10.0 / scale / imgH;
 
-                if (nx >= selBbox.left() && nx <= selBbox.right() &&
-                    ny >= selBbox.top() && ny <= selBbox.bottom()) {
+                if (nx >= selBbox.left() - epsX && nx <= selBbox.right() + epsX &&
+                    ny >= selBbox.top() - epsY && ny <= selBbox.bottom() + epsY) {
 
                     int nearestPt = findPointAt(m_selectedIndex, scenePos);
 
@@ -887,15 +891,18 @@ int CanvasView::findAnnotationAt(const QPointF& scenePos) {
 
     double imgW = m_image.width();
     double imgH = m_image.height();
+    double scale = transform().m11();
 
-    // 转换为归一化坐标
+    // 归一化坐标，留出角点圆点的容差（~10屏幕像素）
+    double eps = 10.0 / scale / imgW;
+    double epsY = 10.0 / scale / imgH;
     double nx = scenePos.x() / imgW;
     double ny = scenePos.y() / imgH;
 
     for (int i = m_annotations.size() - 1; i >= 0; --i) {
         const BoundingBox& bbox = m_annotations[i].boundingBox();
-        if (nx >= bbox.left() && nx <= bbox.right() &&
-            ny >= bbox.top() && ny <= bbox.bottom()) {
+        if (nx >= bbox.left() - eps && nx <= bbox.right() + eps &&
+            ny >= bbox.top() - epsY && ny <= bbox.bottom() + epsY) {
             return i;
         }
     }
@@ -909,10 +916,8 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
     const Annotation& ann = m_annotations[annIndex];
     double imgW = m_image.width();
     double imgH = m_image.height();
-    double scale = transform().m11();
-
-    // 第一遍：角点优先（35屏幕像素），防止关键点"抢走"角点
     const BoundingBox& bbox = ann.boundingBox();
+
     QPointF corners[4] = {
         {bbox.left() * imgW, bbox.top() * imgH},
         {bbox.right() * imgW, bbox.top() * imgH},
@@ -920,37 +925,32 @@ int CanvasView::findPointAt(int annIndex, const QPointF& scenePos) {
         {bbox.left() * imgW, bbox.bottom() * imgH}
     };
 
-    double cornerRadius = 35.0 / scale;
-    double bestCornerDist = cornerRadius;
-    int bestCornerIdx = -1;
-    for (int i = 0; i < 4; ++i) {
-        double dist = std::hypot(scenePos.x() - corners[i].x(),
-                                 scenePos.y() - corners[i].y());
-        if (dist < bestCornerDist) {
-            bestCornerDist = dist;
-            bestCornerIdx = i;
-        }
-    }
-    if (bestCornerIdx >= 0) return bestCornerIdx;
+    // 对所有候选点计算实际距离，取最近者
+    // 关键点距离加权 1.2x，使角点在相近距离时有优先权
+    double scale = transform().m11();
+    double maxDist = 30.0 / scale;  // 统一阈值 ~30 屏幕像素
+    const double kpBias = 1.2;       // 关键点加权（越大越偏向角点）
 
-    // 第二遍：关键点吸附（25屏幕像素）
-    double kpRadius = 25.0 / scale;
-    double bestKpDist = kpRadius;
-    int bestKpIdx = -1;
+    double bestDist = maxDist;
+    int    bestIdx  = -1;
+
+    // 角点（不加权）
+    for (int i = 0; i < 4; ++i) {
+        double d = std::hypot(scenePos.x() - corners[i].x(),
+                              scenePos.y() - corners[i].y());
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    }
+
+    // 关键点（加权，需要比角点明显更近才会赢）
     for (int i = 0; i < ann.keypointCount(); ++i) {
         const Keypoint& kp = ann.keypoints()[i];
-        if (kp.isValid()) {
-            double kpx = kp.x() * imgW;
-            double kpy = kp.y() * imgH;
-            double dist = std::hypot(scenePos.x() - kpx, scenePos.y() - kpy);
-            if (dist < bestKpDist) {
-                bestKpDist = dist;
-                bestKpIdx = i + 4;
-            }
-        }
+        if (!kp.isValid()) continue;
+        double d = std::hypot(scenePos.x() - kp.x() * imgW,
+                              scenePos.y() - kp.y() * imgH) * kpBias;
+        if (d < bestDist) { bestDist = d; bestIdx = i + 4; }
     }
 
-    return bestKpIdx;
+    return bestIdx;
 }
 
 void CanvasView::applyZoom(double factor, const QPointF& center) {
