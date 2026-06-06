@@ -117,6 +117,7 @@ protected:
     void enterEvent(QEnterEvent* event) override;
     void focusOutEvent(QFocusEvent* event) override;
     bool event(QEvent* event) override;
+    void drawForeground(QPainter* painter, const QRectF& rect) override;
 
 private:
     // 重置光标为当前模式对应的光标
@@ -126,6 +127,7 @@ private:
     QGraphicsScene* m_scene;
     QGraphicsPixmapItem* m_pixmapItem = nullptr;
     QImage m_image;
+    QImage m_enhancedImage;   // 增强后的缓存图，放大镜用
     QString m_imagePath;
 
     CoordinateTransform m_transform;
@@ -166,11 +168,13 @@ private:
     int m_contrast = 100;    // 0 ~ 200 (对应 0.0 ~ 2.0)
     int m_saturation = 100;  // 0 ~ 200 (对应 0.0 ~ 2.0)
 
-    // 十字辅助线
+    // 十字辅助线 + 放大镜（关键点标注辅助）
     QGraphicsLineItem* m_crossHairH = nullptr;
     QGraphicsLineItem* m_crossHairV = nullptr;
     bool m_crossHairEnabled = true;
     QColor m_crossHairColor = QColor(0, 255, 0, 180);
+    QPointF m_cursorScenePos;           // 当前光标场景坐标
+    QPoint m_cursorViewPos;             // 当前光标视口坐标
 
     void updateScene();
     void updateAnnotationItems();

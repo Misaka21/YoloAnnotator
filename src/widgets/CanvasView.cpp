@@ -27,6 +27,7 @@ CanvasView::CanvasView(QWidget* parent)
     setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     setBackgroundBrush(QBrush(QColor(50, 50, 50)));
     setMouseTracking(true);
+    setViewportUpdateMode(QGraphicsView::FullViewportUpdate);  // 确保放大镜层级正确
 
     // 创建十字辅助线
     QPen crossPen(m_crossHairColor, 1, Qt::DashLine);
@@ -85,8 +86,9 @@ void CanvasView::setImage(const QImage& image) {
     m_crossHairH->setVisible(m_mode == EditMode::DrawBBox && m_crossHairEnabled);
     m_crossHairV->setVisible(m_mode == EditMode::DrawBBox && m_crossHairEnabled);
 
-    // 添加图片（应用增强效果）
-    m_pixmapItem = m_scene->addPixmap(QPixmap::fromImage(applyEnhancementToImage(m_image)));
+    // 添加图片（应用增强效果，缓存增强图给放大镜用）
+    m_enhancedImage = applyEnhancementToImage(m_image);
+    m_pixmapItem = m_scene->addPixmap(QPixmap::fromImage(m_enhancedImage));
 
     // 设置场景大小为图片大小
     m_scene->setSceneRect(0, 0, image.width(), image.height());
@@ -217,10 +219,12 @@ void CanvasView::setEditMode(EditMode mode) {
     m_mode = mode;
     resetCursorForMode();
 
-    // 只在边界框模式下且启用时显示十字线
-    bool showCross = (mode == EditMode::DrawBBox) && m_crossHairEnabled;
+    // 边界框 / 关键点模式下显示十字线
+    bool showCross = (mode == EditMode::DrawBBox || mode == EditMode::DrawKeypoint) && m_crossHairEnabled;
     m_crossHairH->setVisible(showCross);
     m_crossHairV->setVisible(showCross);
+
+    viewport()->update();  // 切换模式时清除/刷新放大镜
 }
 
 void CanvasView::setSelectedAnnotation(int index) {
@@ -433,11 +437,19 @@ void CanvasView::mousePressEvent(QMouseEvent* event) {
 
 void CanvasView::mouseMoveEvent(QMouseEvent* event) {
     QPointF scenePos = mapToScene(event->pos());
+    m_cursorScenePos = scenePos;
+    m_cursorViewPos = event->pos();
     emit mouseMoved(scenePos);
 
-    // 更新十字辅助线
-    if (m_mode == EditMode::DrawBBox) {
+    // 更新十字辅助线（DrawBBox + DrawKeypoint 模式）
+    if (m_mode == EditMode::DrawBBox || m_mode == EditMode::DrawKeypoint) {
         updateCrossHair(scenePos);
+    }
+
+    // 放大镜：强制刷新视口确保 drawForeground 重绘
+    if (m_mode == EditMode::DrawKeypoint
+        || (m_mode == EditMode::Select && m_dragging && m_dragPointIndex >= 4)) {
+        viewport()->update();
     }
 
     // 悬停光标反馈：鼠标靠近控制点时显示十字光标
@@ -543,6 +555,7 @@ void CanvasView::mouseReleaseEvent(QMouseEvent* event) {
         if (m_dragging) {
             m_dragging = false;
             emit annotationsChanged();
+            viewport()->update();  // 消除放大镜残留
         }
     } else if (event->button() == Qt::RightButton) {
         m_panning = false;
@@ -970,8 +983,8 @@ void CanvasView::leaveEvent(QEvent* event) {
 }
 
 void CanvasView::enterEvent(QEnterEvent* event) {
-    // 鼠标进入时，如果是边界框模式且启用十字线则显示
-    if (m_mode == EditMode::DrawBBox && m_crossHairEnabled) {
+    // 鼠标进入时，边界框/关键点模式下显示十字线
+    if ((m_mode == EditMode::DrawBBox || m_mode == EditMode::DrawKeypoint) && m_crossHairEnabled) {
         m_crossHairH->setVisible(true);
         m_crossHairV->setVisible(true);
     }
@@ -1124,8 +1137,8 @@ QImage CanvasView::applyEnhancementToImage(const QImage& src) const {
 void CanvasView::applyEnhancement() {
     if (m_image.isNull() || !m_pixmapItem) return;
 
-    QImage enhanced = applyEnhancementToImage(m_image);
-    m_pixmapItem->setPixmap(QPixmap::fromImage(enhanced));
+    m_enhancedImage = applyEnhancementToImage(m_image);
+    m_pixmapItem->setPixmap(QPixmap::fromImage(m_enhancedImage));
 }
 
 void CanvasView::setBrightness(int value) {
@@ -1155,4 +1168,43 @@ void CanvasView::resetEnhancement() {
     m_contrast = 100;
     m_saturation = 100;
     applyEnhancement();
+}
+
+void CanvasView::drawForeground(QPainter* painter, const QRectF&) {
+    // 参照 LabelRoboMaster：ADDING_MODE 始终显示，NORMAL_MODE 仅拖动关键点时显示
+    bool showLoupe = (m_mode == EditMode::DrawKeypoint)
+                  || (m_mode == EditMode::Select && m_dragging && m_dragPointIndex >= 4);
+    if (!showLoupe || m_image.isNull()) return;
+
+    // 放大镜使用增强后的图像（与画布显示一致）
+    const QImage& srcImg = m_enhancedImage.isNull() ? m_image : m_enhancedImage;
+
+    QPoint pos = m_cursorViewPos;
+    double scale = transform().m11();
+    int srcSize = qMax(8, int(12.0 / scale));
+    int cx = qBound(srcSize, int(m_cursorScenePos.x()), srcImg.width() - srcSize);
+    int cy = qBound(srcSize, int(m_cursorScenePos.y()), srcImg.height() - srcSize);
+
+    const int loupeSize = 120;
+    QImage patch = srcImg.copy(cx - srcSize, cy - srcSize, srcSize * 2, srcSize * 2)
+                       .scaled(loupeSize, loupeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+
+    // 放大镜位置（光标右下，贴边翻转到左上）
+    int lx = pos.x() + 20, ly = pos.y() + 20;
+    if (lx + patch.width()  > viewport()->width())  lx = pos.x() - 20 - patch.width();
+    if (ly + patch.height() > viewport()->height()) ly = pos.y() - 20 - patch.height();
+
+    painter->save();
+    painter->resetTransform();
+
+    // 阴影背景 + 放大图像 + 边框 + 中心十字
+    painter->fillRect(lx - 1, ly - 1, patch.width() + 2, patch.height() + 2, QColor(0, 0, 0, 180));
+    painter->drawImage(lx, ly, patch);
+    painter->setPen(QPen(QColor(0, 255, 0, 220), 1));
+    painter->drawRect(lx, ly, patch.width(), patch.height());
+    int lcx = lx + patch.width() / 2, lcy = ly + patch.height() / 2;
+    painter->drawLine(lcx, ly, lcx, ly + patch.height());
+    painter->drawLine(lx, lcy, lx + patch.width(), lcy);
+
+    painter->restore();
 }
