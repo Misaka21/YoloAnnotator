@@ -18,7 +18,7 @@ endif()
 # Qt6
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Widgets)
 
-# yaml-cpp (使用 FetchContent 自动下载)
+# yaml-cpp（如已缓存则跳过下载，避免网络不通时卡死）
 include(FetchContent)
 FetchContent_Declare(
     yaml-cpp
@@ -27,6 +27,11 @@ FetchContent_Declare(
     GIT_SHALLOW TRUE
     EXCLUDE_FROM_ALL
 )
+set(FETCHCONTENT_UPDATES_DISCONNECTED_YAML_CPP TRUE)
+if(EXISTS "${CMAKE_BINARY_DIR}/_deps/yaml-cpp-src/CMakeLists.txt")
+    set(FETCHCONTENT_SOURCE_DIR_YAML_CPP "${CMAKE_BINARY_DIR}/_deps/yaml-cpp-src"
+        CACHE PATH "Use cached yaml-cpp source" FORCE)
+endif()
 set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
