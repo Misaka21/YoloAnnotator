@@ -144,6 +144,13 @@ void MainWindow::setupUI() {
     QVBoxLayout* classLayout = new QVBoxLayout(classGroup);
     m_classList = new QListWidget(this); classLayout->addWidget(m_classList);
     classGroup->setMaximumHeight(200);
+
+    // 图像增强面板
+    QGroupBox* enhanceGroup = new QGroupBox("图像增强", this);
+    QVBoxLayout* enhanceLayout = new QVBoxLayout(enhanceGroup);
+    m_enhancePanel = new ImageEnhancementPanel(this);
+    enhanceLayout->addWidget(m_enhancePanel);
+
     QGroupBox* annGroup = new QGroupBox("标注", this);
     QVBoxLayout* annLayout = new QVBoxLayout(annGroup);
     m_annotationList = new QListWidget(this); annLayout->addWidget(m_annotationList);
@@ -153,7 +160,9 @@ void MainWindow::setupUI() {
     m_formatCombo->addItem("目标检测 (Detection)");
     m_formatCombo->addItem("姿态估计 (Pose)");
     formatLayout->addWidget(m_formatCombo); formatGroup->setMaximumHeight(80);
-    rightLayout->addWidget(classGroup); rightLayout->addWidget(annGroup);
+    rightLayout->addWidget(classGroup);
+    rightLayout->addWidget(enhanceGroup);
+    rightLayout->addWidget(annGroup);
     rightLayout->addWidget(formatGroup);
 
     splitter->addWidget(fileGroup);
@@ -355,6 +364,14 @@ void MainWindow::setupConnections() {
     connect(m_classList, &QListWidget::itemDoubleClicked, this, &MainWindow::onClassListDoubleClicked);
     connect(m_formatCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             [this](int i){ m_annotationIO.setFormat(i==0 ? AnnotationIO::Detection : AnnotationIO::Pose); });
+
+    // 图像增强面板
+    connect(m_enhancePanel, &ImageEnhancementPanel::brightnessChanged,
+            m_canvasView, &CanvasView::setBrightness);
+    connect(m_enhancePanel, &ImageEnhancementPanel::contrastChanged,
+            m_canvasView, &CanvasView::setContrast);
+    connect(m_enhancePanel, &ImageEnhancementPanel::saturationChanged,
+            m_canvasView, &CanvasView::setSaturation);
 }
 
 void MainWindow::onOpenFolder() {

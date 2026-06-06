@@ -12,6 +12,7 @@
 #include <QMutex>
 #include <atomic>
 #include "CanvasView.h"
+#include "ImageEnhancementPanel.h"
 #include "io/ClassesLoader.h"
 #include "io/AnnotationIO.h"
 #include "io/DatasetConfig.h"
@@ -150,6 +151,7 @@ private slots:
 private:
     // UI组件
     CanvasView* m_canvasView;
+    ImageEnhancementPanel* m_enhancePanel;
     QListWidget* m_fileList;
     QListWidget* m_annotationList;
     QListWidget* m_classList;

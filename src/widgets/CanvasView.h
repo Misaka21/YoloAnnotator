@@ -85,6 +85,15 @@ public:
     void zoomOriginal();
     double currentZoom() const { return m_transform.scale(); }
 
+    // 图像增强（仅显示，不修改原图）
+    void setBrightness(int value);    // -100 ~ 100
+    void setContrast(int value);      // 0 ~ 200 (对应 0.0 ~ 2.0)
+    void setSaturation(int value);    // 0 ~ 200 (对应 0.0 ~ 2.0)
+    int brightness() const { return m_brightness; }
+    int contrast() const { return m_contrast; }
+    int saturation() const { return m_saturation; }
+    void resetEnhancement();
+
 signals:
     void annotationsChanged();
     void annotationSelected(int index);
@@ -152,6 +161,11 @@ private:
     int m_dragPointIndex = -1;  // -1=整体拖动, 0-3=边框角点, >=4=关键点
     QPointF m_dragStartPos;
 
+    // 图像增强参数（仅显示用，不修改原图）
+    int m_brightness = 0;    // -100 ~ 100
+    int m_contrast = 100;    // 0 ~ 200 (对应 0.0 ~ 2.0)
+    int m_saturation = 100;  // 0 ~ 200 (对应 0.0 ~ 2.0)
+
     // 十字辅助线
     QGraphicsLineItem* m_crossHairH = nullptr;
     QGraphicsLineItem* m_crossHairV = nullptr;
@@ -166,4 +180,6 @@ private:
     int findAnnotationAt(const QPointF& scenePos);
     int findPointAt(int annIndex, const QPointF& scenePos);
     void applyZoom(double factor, const QPointF& center);
+    QImage applyEnhancementToImage(const QImage& src) const;  // 生成增强后的图像副本
+    void applyEnhancement();  // 应用图像增强到显示的 pixmap
 };

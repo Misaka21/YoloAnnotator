@@ -128,6 +128,7 @@ set(WIDGET_SOURCES
     src/widgets/MainWindow.cpp
     src/widgets/CanvasView.cpp
     src/widgets/AnnotationItem.cpp
+    src/widgets/ImageEnhancementPanel.cpp
     src/widgets/NewProjectDialog.cpp
     src/widgets/SplitDatasetDialog.cpp
     src/widgets/SkeletonConfigDialog.cpp

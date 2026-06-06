@@ -85,9 +85,8 @@ void CanvasView::setImage(const QImage& image) {
     m_crossHairH->setVisible(m_mode == EditMode::DrawBBox && m_crossHairEnabled);
     m_crossHairV->setVisible(m_mode == EditMode::DrawBBox && m_crossHairEnabled);
 
-    // 添加图片
-    m_pixmapItem = m_scene->addPixmap(QPixmap::fromImage(image));
-    m_pixmapItem->setZValue(-1);
+    // 添加图片（应用增强效果）
+    m_pixmapItem = m_scene->addPixmap(QPixmap::fromImage(applyEnhancementToImage(m_image)));
 
     // 设置场景大小为图片大小
     m_scene->setSceneRect(0, 0, image.width(), image.height());
@@ -1065,4 +1064,95 @@ void CanvasView::focusOutEvent(QFocusEvent* event) {
     // 窗口失去焦点时重置所有操作状态
     resetOperationState();
     QGraphicsView::focusOutEvent(event);
+}
+
+// ==================== 图像增强（仅显示，不修改原图） ====================
+
+QImage CanvasView::applyEnhancementToImage(const QImage& src) const {
+    if (src.isNull()) return src;
+
+    // 1. 统一转换为 Format_RGB888，消除不同图片格式带来的像素布局差异
+    QImage rgbImg = src.convertToFormat(QImage::Format_RGB888);
+
+    // 2. 包装为 cv::Mat（无拷贝），再 clone 为连续 Mat
+    cv::Mat mat(rgbImg.height(), rgbImg.width(), CV_8UC3,
+                rgbImg.bits(),
+                static_cast<size_t>(rgbImg.bytesPerLine()));
+    cv::Mat rgb = mat.clone();
+
+    // 3. 转到 float [0,1] 域 — 后续所有运算都不会溢出
+    cv::Mat fimg;
+    rgb.convertTo(fimg, CV_32FC3, 1.0 / 255.0);
+
+    // 4. 亮度: -100~100 → 偏移量
+    if (m_brightness != 0) {
+        fimg += static_cast<float>(m_brightness / 255.0);
+    }
+
+    // 5. 对比度: 0~200 → alpha，以 0.5 灰点为轴心
+    double contrast = m_contrast / 100.0;
+    if (std::abs(contrast - 1.0) > 0.001) {
+        fimg = (fimg - 0.5f) * static_cast<float>(contrast) + 0.5f;
+    }
+
+    // 6. 饱和度: 0~200 → 0.0~2.0，在 float HSV 域中操作
+    double saturation = m_saturation / 100.0;
+    if (std::abs(saturation - 1.0) > 0.001) {
+        // cvtColor 直接支持 CV_32F: RGB → HSV(H:0-360, S:0-1, V:0-1)
+        cv::Mat hsv;
+        cv::cvtColor(fimg, hsv, cv::COLOR_RGB2HSV);
+        std::vector<cv::Mat> ch;
+        cv::split(hsv, ch);
+        ch[1] *= static_cast<float>(saturation);   // float 域缩放 S 通道，不会溢出
+        cv::merge(ch, hsv);
+        cv::cvtColor(hsv, fimg, cv::COLOR_HSV2RGB);
+    }
+
+    // 7. 钳位到 [0,1] 并转回 uchar
+    cv::max(fimg, 0.0, fimg);
+    cv::min(fimg, 1.0, fimg);
+    cv::Mat out8u;
+    fimg.convertTo(out8u, CV_8UC3, 255.0);
+
+    // 8. 确保内存连续后构造 QImage
+    if (!out8u.isContinuous()) out8u = out8u.clone();
+    return QImage(out8u.data, out8u.cols, out8u.rows,
+                  static_cast<int>(out8u.step),
+                  QImage::Format_RGB888).copy();
+}
+
+void CanvasView::applyEnhancement() {
+    if (m_image.isNull() || !m_pixmapItem) return;
+
+    QImage enhanced = applyEnhancementToImage(m_image);
+    m_pixmapItem->setPixmap(QPixmap::fromImage(enhanced));
+}
+
+void CanvasView::setBrightness(int value) {
+    if (m_brightness != value) {
+        m_brightness = value;
+        applyEnhancement();
+    }
+}
+
+void CanvasView::setContrast(int value) {
+    if (m_contrast != value) {
+        m_contrast = value;
+        applyEnhancement();
+    }
+}
+
+void CanvasView::setSaturation(int value) {
+    if (m_saturation != value) {
+        m_saturation = value;
+        applyEnhancement();
+    }
+}
+
+void CanvasView::resetEnhancement() {
+    if (m_brightness == 0 && m_contrast == 100 && m_saturation == 100) return;
+    m_brightness = 0;
+    m_contrast = 100;
+    m_saturation = 100;
+    applyEnhancement();
 }
