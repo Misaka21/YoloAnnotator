@@ -815,6 +815,32 @@ void CanvasView::updateAnnotationItems() {
                     centerDot->setToolTip(tooltip);
 
                     m_annotationItems.append(centerDot);
+
+                    // 关键点序号标签
+                    if (m_showKeypointLabels) {
+                        double labelDist = crossSize + 4.0 / viewScale;
+                        QFont kpFont("Segoe UI", 7);
+                        kpFont.setWeight(QFont::Bold);
+                        QString num = QString::number(k);
+                        QColor kpLabelColor = kpColor;
+                        kpLabelColor.setAlpha(alpha);
+                        QColor kpLabelShadow(0, 0, 0, std::min(alpha, 160));
+
+                        // 阴影
+                        auto* shadow = m_scene->addSimpleText(num, kpFont);
+                        shadow->setBrush(kpLabelShadow);
+                        shadow->setPos(kx + labelDist + 1.0 / viewScale,
+                                       ky - labelDist + 1.0 / viewScale);
+                        shadow->setZValue(6);
+                        m_annotationItems.append(shadow);
+
+                        // 主文字
+                        auto* label = m_scene->addSimpleText(num, kpFont);
+                        label->setBrush(kpLabelColor);
+                        label->setPos(kx + labelDist, ky - labelDist);
+                        label->setZValue(7);
+                        m_annotationItems.append(label);
+                    }
                 }
             }
 
@@ -1093,41 +1119,51 @@ QImage CanvasView::applyEnhancementToImage(const QImage& src) const {
                 static_cast<size_t>(rgbImg.bytesPerLine()));
     cv::Mat rgb = mat.clone();
 
-    // 3. 转到 float [0,1] 域 — 后续所有运算都不会溢出
+    // 3. 转到 float [0,1] 域
     cv::Mat fimg;
     rgb.convertTo(fimg, CV_32FC3, 1.0 / 255.0);
 
-    // 4. 亮度: -100~100 → 偏移量
-    if (m_brightness != 0) {
-        fimg += static_cast<float>(m_brightness / 255.0);
+    // 4. 转到 HSV，亮度和饱和度在 HSV 域操作
+    //    亮度(V): 乘性调整，V=0(纯黑)保持不变
+    //    饱和度(S): 乘性缩放
+    bool needHsv = (m_brightness != 0) || (std::abs(m_saturation / 100.0 - 1.0) > 0.001);
+    if (needHsv) {
+        cv::Mat hsv;
+        cv::cvtColor(fimg, hsv, cv::COLOR_RGB2HSV);
+        std::vector<cv::Mat> ch;
+        cv::split(hsv, ch);  // ch[0]=H[0,360), ch[1]=S[0,1], ch[2]=V[0,1]
+
+        // 亮度: V *= (1 + brightness/100)，V=0 保持为 0
+        if (m_brightness != 0) {
+            float vFactor = 1.0f + m_brightness / 100.0f;
+            if (vFactor < 0.0f) vFactor = 0.0f;
+            cv::multiply(ch[2], vFactor, ch[2]);
+            cv::min(ch[2], 1.0, ch[2]);
+        }
+
+        // 饱和度: S *= saturation
+        double saturation = m_saturation / 100.0;
+        if (std::abs(saturation - 1.0) > 0.001) {
+            cv::multiply(ch[1], static_cast<float>(saturation), ch[1]);
+        }
+
+        cv::merge(ch, hsv);
+        cv::cvtColor(hsv, fimg, cv::COLOR_HSV2RGB);
     }
 
-    // 5. 对比度: 0~200 → alpha，以 0.5 灰点为轴心
+    // 5. 对比度: 在 RGB 域，以 0.5 灰点为轴心
     double contrast = m_contrast / 100.0;
     if (std::abs(contrast - 1.0) > 0.001) {
         fimg = (fimg - 0.5f) * static_cast<float>(contrast) + 0.5f;
     }
 
-    // 6. 饱和度: 0~200 → 0.0~2.0，在 float HSV 域中操作
-    double saturation = m_saturation / 100.0;
-    if (std::abs(saturation - 1.0) > 0.001) {
-        // cvtColor 直接支持 CV_32F: RGB → HSV(H:0-360, S:0-1, V:0-1)
-        cv::Mat hsv;
-        cv::cvtColor(fimg, hsv, cv::COLOR_RGB2HSV);
-        std::vector<cv::Mat> ch;
-        cv::split(hsv, ch);
-        ch[1] *= static_cast<float>(saturation);   // float 域缩放 S 通道，不会溢出
-        cv::merge(ch, hsv);
-        cv::cvtColor(hsv, fimg, cv::COLOR_HSV2RGB);
-    }
-
-    // 7. 钳位到 [0,1] 并转回 uchar
+    // 6. 钳位到 [0,1] 并转回 uchar
     cv::max(fimg, 0.0, fimg);
     cv::min(fimg, 1.0, fimg);
     cv::Mat out8u;
     fimg.convertTo(out8u, CV_8UC3, 255.0);
 
-    // 8. 确保内存连续后构造 QImage
+    // 7. 确保内存连续后构造 QImage
     if (!out8u.isContinuous()) out8u = out8u.clone();
     return QImage(out8u.data, out8u.cols, out8u.rows,
                   static_cast<int>(out8u.step),

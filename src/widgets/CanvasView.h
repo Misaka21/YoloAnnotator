@@ -77,6 +77,8 @@ public:
     bool crossHairEnabled() const { return m_crossHairEnabled; }
     void setCrossHairColor(const QColor& color);
     QColor crossHairColor() const { return m_crossHairColor; }
+    void setKeypointLabelsEnabled(bool enabled) { m_showKeypointLabels = enabled; updateAnnotationItems(); }
+    bool keypointLabelsEnabled() const { return m_showKeypointLabels; }
 
     // 缩放
     void zoomIn();
@@ -175,6 +177,9 @@ private:
     QColor m_crossHairColor = QColor(0, 255, 0, 180);
     QPointF m_cursorScenePos;           // 当前光标场景坐标
     QPoint m_cursorViewPos;             // 当前光标视口坐标
+
+    // 角点序号标签
+    bool m_showKeypointLabels = true;
 
     void updateScene();
     void updateAnnotationItems();

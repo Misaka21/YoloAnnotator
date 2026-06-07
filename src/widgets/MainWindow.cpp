@@ -241,6 +241,11 @@ void MainWindow::setupMenus() {
             m_canvasView->setCrossHairColor(color);
         }
     });
+    viewMenu->addSeparator();
+    QAction* keypointLabelAction = viewMenu->addAction("显示关键点序号(&N)");
+    keypointLabelAction->setCheckable(true);
+    keypointLabelAction->setChecked(m_canvasView->keypointLabelsEnabled());
+    connect(keypointLabelAction, &QAction::toggled, m_canvasView, &CanvasView::setKeypointLabelsEnabled);
     QMenu* toolsMenu = menuBar()->addMenu("工具(&T)");
     QAction* skeletonAction = toolsMenu->addAction("配置骨架(&S)...");
     connect(skeletonAction, &QAction::triggered, this, &MainWindow::onEditSkeletonConfig);
