@@ -356,7 +356,9 @@ void MainWindow::setupToolBar() {
 }
 
 void MainWindow::setupConnections() {
+    m_fileList->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_fileList, &QListWidget::itemClicked, this, &MainWindow::onFileSelected);
+    connect(m_fileList, &QListWidget::customContextMenuRequested, this, &MainWindow::onFileListContextMenu);
     connect(m_classList, &QListWidget::itemClicked, this, &MainWindow::onClassItemClicked);
     connect(m_annotationList, &QListWidget::currentRowChanged, m_canvasView, &CanvasView::setSelectedAnnotation);
     connect(m_canvasView, &CanvasView::annotationsChanged, this, &MainWindow::onAnnotationChanged);
@@ -1537,6 +1539,61 @@ void MainWindow::onBatchRename() {
         updateFileList();
         updateStatusBar();
     }
+}
+
+void MainWindow::onFileListContextMenu(const QPoint& pos) {
+    QListWidgetItem* item = m_fileList->itemAt(pos);
+    if (!item) return;
+
+    int index = m_fileList->row(item);
+
+    QMenu menu(this);
+    QAction* deleteAction = menu.addAction("删除");
+    QAction* chosen = menu.exec(m_fileList->viewport()->mapToGlobal(pos));
+    if (chosen != deleteAction) return;
+
+    QString fileName = m_imageFiles[index];
+    QString imagePath = m_currentFolder + "/" + fileName;
+    QString annotationPath = getAnnotationPath(imagePath);
+    bool hasAnnotation = QFile::exists(annotationPath);
+
+    QString message = QString("确定要删除以下文件吗？\n\n图片: %1").arg(fileName);
+    if (hasAnnotation) {
+        message += QString("\n标注: %1").arg(QFileInfo(annotationPath).fileName());
+    }
+    message += "\n\n此操作不可恢复！";
+
+    if (QMessageBox::question(this, "确认删除", message,
+                              QMessageBox::Yes | QMessageBox::No,
+                              QMessageBox::No) != QMessageBox::Yes) {
+        return;
+    }
+
+    QFile::remove(imagePath);
+    if (hasAnnotation) {
+        QFile::remove(annotationPath);
+    }
+
+    m_imageFiles.removeAt(index);
+
+    if (index == m_currentIndex) {
+        m_currentIndex = -1;
+        updateFileList();
+        int loadIdx = index >= m_imageFiles.size() ? m_imageFiles.size() - 1 : index;
+        if (loadIdx >= 0) {
+            loadImage(loadIdx);
+        } else {
+            m_canvasView->clearImage();
+            updateStatusBar();
+        }
+    } else {
+        if (index < m_currentIndex) {
+            m_currentIndex--;
+        }
+        updateFileList();
+    }
+
+    statusBar()->showMessage("已删除 " + fileName, 3000);
 }
 
 void MainWindow::onDeleteImageFile() {

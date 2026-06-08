@@ -98,6 +98,7 @@ private slots:
     void onImportClasses();
     void onSaveAnnotation();
     void onDeleteImageFile();
+    void onFileListContextMenu(const QPoint& pos);
 
     // 导航
     void onFileSelected(QListWidgetItem* item);
