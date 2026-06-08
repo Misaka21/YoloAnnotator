@@ -224,7 +224,7 @@ bool YoloDetector::analyzeModel()
     for (int size : candidateSizes) {
         try {
             cv::Mat dummy(size, size, CV_8UC3, cv::Scalar(114, 114, 114));
-            cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), true, false);
+            cv::Mat blob = cv::dnn::blobFromImage(dummy, 1.0 / 255.0, cv::Size(), cv::Scalar(), false, false);
             m_net.setInput(blob);
 
             std::vector<cv::Mat> outputs;
@@ -299,21 +299,38 @@ bool YoloDetector::analyzeModel()
                 }
                 qDebug() << "Detected YOLOv5-style Detection model with" << m_numClasses << "classes";
             } else if ((numOutputs - 5) > 0 && (numOutputs - 5) % 3 == 0) {
-                // Keep existing pose heuristic for v8/v11 pose models.
+                // 1-class pose:  [x,y,w,h, conf,     kp*3*K] → outputs = 5 + 3K
                 m_modelType = ModelType::Pose;
                 m_numKeypoints = (numOutputs - 5) / 3;
                 m_numClasses = 1;
-                qDebug() << "Detected Pose model with" << m_numKeypoints << "keypoints";
+                qDebug() << "Detected Pose model with" << m_numKeypoints << "keypoints (1-class)";
+            } else if ((numOutputs - 4) > 3) {
+                // Try N-class pose: [x,y,w,h, cls*N, kp*3*K] → outputs = 4 + N + 3K
+                // Search for (N, K) where N >= 1, K >= 1, outputs = 4 + N + 3K
+                bool found = false;
+                for (int n = 1; n <= (numOutputs - 4) / 3 + 1; n++) {
+                    int kpChannels = numOutputs - 4 - n;
+                    if (kpChannels > 0 && kpChannels % 3 == 0) {
+                        m_modelType = ModelType::Pose;
+                        m_numKeypoints = kpChannels / 3;
+                        m_numClasses = n;
+                        qDebug() << "Detected Pose model with" << m_numKeypoints << "keypoints," << n << "classes";
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found) {
+                    m_modelType = ModelType::Detection;
+                    m_numClasses = numOutputs - 4;
+                    m_numKeypoints = 0;
+                    qDebug() << "Detected Detection model with" << m_numClasses << "classes";
+                }
             } else {
-                // YOLOv8/v11 detection output: [x, y, w, h, cls...]
+                // Fallback: treat unknown layout as Detection
                 m_modelType = ModelType::Detection;
                 m_numClasses = numOutputs - 4;
                 m_numKeypoints = 0;
-                if (m_numClasses <= 0) {
-                    reloadNetForRetry();
-                    continue;
-                }
-                qDebug() << "Detected Detection model with" << m_numClasses << "classes";
+                qDebug() << "Detected Detection model with" << m_numClasses << "classes (fallback)";
             }
 
             return true;
