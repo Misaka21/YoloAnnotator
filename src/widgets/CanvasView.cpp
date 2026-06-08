@@ -1218,11 +1218,16 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF&) {
     QPoint pos = m_cursorViewPos;
     double scale = transform().m11();
     int srcSize = qMax(8, int(12.0 / scale));
-    int cx = qBound(srcSize, int(m_cursorScenePos.x()), srcImg.width() - srcSize);
-    int cy = qBound(srcSize, int(m_cursorScenePos.y()), srcImg.height() - srcSize);
+    srcSize = qMin(srcSize, qMin(srcImg.width(), srcImg.height()) / 2);
+    if (srcSize < 1) return;
+
+    int cx = int(m_cursorScenePos.x());
+    int cy = int(m_cursorScenePos.y());
+    int srcX = qBound(0, cx - srcSize, srcImg.width() - srcSize * 2);
+    int srcY = qBound(0, cy - srcSize, srcImg.height() - srcSize * 2);
 
     const int loupeSize = 120;
-    QImage patch = srcImg.copy(cx - srcSize, cy - srcSize, srcSize * 2, srcSize * 2)
+    QImage patch = srcImg.copy(srcX, srcY, srcSize * 2, srcSize * 2)
                        .scaled(loupeSize, loupeSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
 
     // 放大镜位置（光标右下，贴边翻转到左上）
@@ -1233,12 +1238,13 @@ void CanvasView::drawForeground(QPainter* painter, const QRectF&) {
     painter->save();
     painter->resetTransform();
 
-    // 阴影背景 + 放大图像 + 边框 + 中心十字
+    // 阴影背景 + 放大图像 + 边框 + 十字准星（准星位置随光标偏移，无死区）
     painter->fillRect(lx - 1, ly - 1, patch.width() + 2, patch.height() + 2, QColor(0, 0, 0, 180));
     painter->drawImage(lx, ly, patch);
     painter->setPen(QPen(QColor(0, 255, 0, 220), 1));
     painter->drawRect(lx, ly, patch.width(), patch.height());
-    int lcx = lx + patch.width() / 2, lcy = ly + patch.height() / 2;
+    int lcx = lx + qBound(0, int(double(cx - srcX) / (srcSize * 2) * loupeSize), loupeSize);
+    int lcy = ly + qBound(0, int(double(cy - srcY) / (srcSize * 2) * loupeSize), loupeSize);
     painter->drawLine(lcx, ly, lcx, ly + patch.height());
     painter->drawLine(lx, lcy, lx + patch.width(), lcy);
 
